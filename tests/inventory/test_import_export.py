@@ -2,6 +2,7 @@
 
 import csv
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -220,7 +221,7 @@ def test_folder_ignores_results_csv(tmp_path, plot):
     (tmp_path / "trees.csv").write_text("tree_id,status,x,y\n1,ok,3.0,4.0\n")
     (tmp_path / "notes.txt").write_text("plot 7, surveyed in May\n")
     cloud = inv.load_cloud(tmp_path)
-    assert [p.split("/")[-1] for p in cloud.sources] == ["a.las"]
+    assert [Path(p).name for p in cloud.sources] == ["a.las"]  # not a path.split("/"): Windows
     # a folder holding only text files still works
     only_text = tmp_path / "txt"
     only_text.mkdir()
@@ -235,3 +236,110 @@ def test_partially_declared_units_are_refused(tmp_path, plot):
         inv.load_cloud(tmp_path)
     ok = inv.load_cloud(tmp_path, units="us_ft")  # explicit units resolve it
     assert ok.units == "us_ft"
+
+
+# --- the three primary input formats: LAS, LAZ, PLY ---------------------------------------
+
+
+def _write_ply(path, xyz, binary=True, dtype="double", colors=False):
+    n = len(xyz)
+    props = [("x", dtype), ("y", dtype), ("z", dtype)] + (
+        [("red", "uchar"), ("green", "uchar"), ("blue", "uchar")] if colors else []
+    )
+    header = "ply\nformat {} 1.0\nelement vertex {}\n{}end_header\n".format(
+        "binary_little_endian" if binary else "ascii",
+        n,
+        "".join(f"property {t} {name}\n" for name, t in props),
+    )
+    if binary:
+        np_t = {"double": "<f8", "float": "<f4", "uchar": "u1"}
+        rec = np.zeros(n, dtype=[(name, np_t[t]) for name, t in props])
+        for i, c in enumerate("xyz"):
+            rec[c] = xyz[:, i]
+        if colors:
+            rec["red"] = rec["green"] = rec["blue"] = 120
+        path.write_bytes(header.encode() + rec.tobytes())
+    else:
+        with open(path, "w") as fh:
+            fh.write(header)
+            for row in xyz:
+                fh.write(
+                    " ".join(f"{v:.6f}" for v in row) + (" 120 120 120" if colors else "") + "\n"
+                )
+
+
+@pytest.mark.parametrize("ext", [".las", ".laz"])
+@pytest.mark.parametrize("version,fmt", [("1.2", 0), ("1.2", 3), ("1.4", 6), ("1.4", 8)])
+def test_las_and_laz_versions_and_point_formats(tmp_path, ext, version, fmt):
+    rng = np.random.default_rng(1)
+    pts = np.c_[rng.uniform(0, 30, 3000), rng.uniform(0, 30, 3000), rng.uniform(0, 12, 3000)]
+    pts += [500_000.0, 5_600_000.0, 100.0]  # UTM-sized coordinates
+    header = laspy.LasHeader(point_format=fmt, version=version)
+    header.scales = [0.001] * 3
+    header.offsets = np.floor(pts.min(axis=0))
+    las = laspy.LasData(header)
+    las.x, las.y, las.z = pts[:, 0], pts[:, 1], pts[:, 2]
+    path = tmp_path / f"t{ext}"
+    las.write(str(path), do_compress=ext == ".laz")
+    got = inv.load_cloud(path)
+    assert len(got.xyz) == len(pts)
+    np.testing.assert_allclose(got.xyz, pts, atol=0.001)
+
+
+@pytest.mark.parametrize(
+    "binary,dtype,colors",
+    [
+        (True, "double", False),
+        (True, "float", True),
+        (False, "double", False),
+        (False, "float", True),
+    ],
+)
+def test_ply_variants(tmp_path, binary, dtype, colors):
+    rng = np.random.default_rng(2)
+    pts = np.c_[rng.uniform(0, 30, 2000), rng.uniform(0, 30, 2000), rng.uniform(0, 12, 2000)]
+    _write_ply(tmp_path / "t.ply", pts, binary, dtype, colors)
+    tol = 1e-5 if dtype == "float" else 1e-6
+    np.testing.assert_allclose(inv.load_cloud(tmp_path / "t.ply").xyz, pts, atol=tol * 100)
+
+
+def test_ply_with_large_coordinates_keeps_precision(tmp_path):
+    rng = np.random.default_rng(3)
+    pts = np.c_[rng.uniform(0, 30, 2000), rng.uniform(0, 30, 2000), rng.uniform(0, 12, 2000)]
+    pts += [500_000.0, 5_600_000.0, 0.0]
+    _write_ply(tmp_path / "utm.ply", pts, binary=True, dtype="double")
+    np.testing.assert_allclose(inv.load_cloud(tmp_path / "utm.ply").xyz, pts, atol=1e-6)
+
+
+def test_broken_files_give_clear_errors(tmp_path):
+    (tmp_path / "bad.laz").write_bytes(b"not a laz file")
+    with pytest.raises(InputDataError, match="cannot read LAS/LAZ"):
+        inv.load_cloud(tmp_path / "bad.laz")
+    (tmp_path / "bad.ply").write_text("ply\nformat ascii 1.0\nelement vertex 3\nend_header\n")
+    with pytest.raises(InputDataError):
+        inv.load_cloud(tmp_path / "bad.ply")
+    (tmp_path / "empty.las").write_bytes(b"")
+    with pytest.raises(InputDataError):
+        inv.load_cloud(tmp_path / "empty.las")
+
+
+def test_same_trees_from_las_laz_and_ply(tmp_path, plot):
+    """The same plot, stored three ways, must give the same DBH values."""
+    xyz = plot.points + [500_000.0, 5_600_000.0, 0.0]
+    write_las(tmp_path / "p.las", xyz)
+    header = laspy.LasHeader(point_format=6, version="1.4")
+    header.scales, header.offsets = [0.001] * 3, np.floor(xyz.min(axis=0))
+    las = laspy.LasData(header)
+    las.x, las.y, las.z = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    las.write(str(tmp_path / "p.laz"), do_compress=True)
+    _write_ply(tmp_path / "p.ply", xyz)
+    results = {}
+    for name in ("p.las", "p.laz", "p.ply"):
+        cloud = inv.load_cloud(tmp_path / name)
+        gp, sp, fp = inv.GroundParams(), inv.SegmentParams(), FitParams()
+        g, ng = inv.segment_ground(cloud.xyz, gp, cloud.classification)
+        pts, lab = inv.segment_trees(inv.normalize_heights(g, ng, gp), sp)
+        recs = inv.fit_trees(inv.group_trees(pts, lab, 50), g, fp, gp)
+        results[name] = sorted(round(r.dbh, 3) for r in recs if r.fitted)
+    assert len(results["p.las"]) >= 6
+    assert results["p.las"] == results["p.laz"] == results["p.ply"]

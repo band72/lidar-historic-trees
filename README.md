@@ -45,7 +45,7 @@ It builds on the ICRA 2024 research code [PRBonn/forest_inventory_pipeline](http
 
 ### Windows 10 / 11 (64-bit)
 
-1. Download **[LiDAR-Tree-Inventory-0.1.2-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.2/LiDAR-Tree-Inventory-0.1.2-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
+1. Download **[LiDAR-Tree-Inventory-0.1.3-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.3/LiDAR-Tree-Inventory-0.1.3-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
 2. Run it. No administrator rights are needed: it installs for your user by default. On the first screen you can choose *Install for all users* instead, which needs admin.
 3. Optional tasks during setup:
    - **Create a desktop shortcut**
@@ -62,9 +62,9 @@ Requires glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 
 
 ```bash
 # download (or use the link on the release page)
-wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.2/LiDAR-Tree-Inventory-0.1.2-linux-x86_64.tar.gz
-tar xzf LiDAR-Tree-Inventory-0.1.2-linux-x86_64.tar.gz
-cd LiDAR-Tree-Inventory-0.1.2-linux-x86_64
+wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.3/LiDAR-Tree-Inventory-0.1.3-linux-x86_64.tar.gz
+tar xzf LiDAR-Tree-Inventory-0.1.3-linux-x86_64.tar.gz
+cd LiDAR-Tree-Inventory-0.1.3-linux-x86_64
 ./install.sh                 # for your user, no root needed
 # or: sudo ./install.sh --system    (all users, installs to /opt)
 ```
@@ -355,7 +355,7 @@ See [section 9](#9-calibrating-the-confidence-interval).
 
 ### Point cloud files
 
-LAS/LAZ is preferred, and the table in [section 2](#preferred-input-file) says why.
+**LAS, LAZ and PLY are the primary formats.** LAS and LAZ (versions 1.0-1.4, any point format, compressed or not) are preferred, and the table in [section 2](#preferred-input-file) says why. PLY files can be binary or ASCII, with float or double coordinates, and with colours or other properties: only the x, y, z are used, and large georeferenced coordinates keep their full precision. Every format is covered by automated tests, and the same plot stored as LAS, LAZ and PLY gives identical results.
 
 | Format | Extensions | Notes |
 |---|---|---|
@@ -544,6 +544,23 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 ---
 
+### Limits: stems that are only partly visible
+
+When the scan sees only one side of a trunk, the program still measures it and says how much of the circumference it saw (`arc_coverage` in the table). What to expect, from simulations on synthetic stems with known diameter:
+
+| Stem seen | Round stem | Oval stem (44 × 36 cm) |
+|---|---|---|
+| All the way round | error about 0.03 cm | +0.1 cm |
+| About three quarters (270°) | error about 0.03 cm | about 5 % low |
+| About half (180°) | error about 0.1-0.2 cm | **13 % low or 17 % high**, depending on which side faces the scanner |
+| Under 40 % (120° or less) | error 0.1-0.7 cm, interval widens, flagged `warning` | not simulated |
+
+- **For round stems a half view is fine**, and the interval stays honest.
+- **For stems that are not round, a half view cannot show it.** The program fits a circle to the arc it sees, so it measures the *local curvature*: too small if you see the flat side of an oval, too large if you see its narrow end. The reported interval only covers measurement noise and the systematic term, not this shape error, so in the oval simulation it excluded the true value.
+- A half-visible stem is **not flagged** until its arc coverage drops below 40 % (`fit.min_arc_coverage`). Raise that to about 0.6 (`min_arc_coverage: 0.6` in the config) if you'd rather see every half-visible stem marked `warning`.
+
+What to do: scan from at least two sides, so every stem is seen all round or from both flanks. In the table, sort or filter by `arc_coverage` and treat low values as approximate. If you must use a one-sided scan, tape-measure some of the partly visible trees and [calibrate](#9-calibrating-the-confidence-interval) with them, since that sets the systematic uncertainty for exactly this situation.
+
 ## 9. Calibrating the confidence interval
 
 The interval is only honest if the systematic uncertainty matches your data: your scanner, forest type and bark. Measure some trees in the field and let the software estimate it.
@@ -583,7 +600,8 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Neighbouring trees merged into one** | Keep *Merged trees* on and lower the stem gap; lower `k` or `beta` |
 | **One tree split into several** | Raise `k` or `beta` |
 | **Many `failed` trees: "only N points in the breast-height band"** | Sparse stems: widen the band (`band_half_width`) or lower `min_band_points` |
-| **Many `warning: low arc coverage`** | The stems were scanned from one side, so the intervals are wider by design. Scan from more positions if you need tighter intervals |
+| **Many `warning: low arc coverage`** | The stems were scanned from one side. Round stems are still measured well, but oval ones can be off by more than the interval says: see [Limits](#limits-stems-that-are-only-partly-visible). Scan from more positions |
+| **Half the trunk is missing in the scan** | Works for round stems; see [Limits](#limits-stems-that-are-only-partly-visible) for what to expect and how to mark such trees |
 | **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
@@ -603,7 +621,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 92 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 107 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```
