@@ -50,6 +50,26 @@ class OptionSpec:
 
 
 @dataclass
+class PointCloudData:
+    """
+    What a reader returns. Only ``xyz`` is required; metadata lets the pipeline pick
+    units, reuse an existing ground classification and carry the CRS to the exports.
+    """
+
+    xyz: np.ndarray
+    #: per-point ASPRS classification (2 = ground, 7/18 = noise), if the file has one
+    classification: np.ndarray | None = None
+    #: horizontal / vertical length unit found in the file's metadata (m, ft, us_ft)
+    units: str | None = None
+    z_units: str | None = None
+    #: coordinate reference system, e.g. "EPSG:2236", and its WKT if known
+    crs: str | None = None
+    crs_wkt: str | None = None
+    #: True when the reader already applied the ``crop`` option (saves memory on big files)
+    cropped: bool = False
+
+
+@dataclass
 class ExportContext:
     """Run-level information handed to exporters alongside the trees."""
 
@@ -59,6 +79,9 @@ class ExportContext:
     #: output length unit for exports: m, ft or us_ft (records are always in metres)
     units: str = "m"
     parameters: dict[str, Any] = field(default_factory=dict)
+    #: coordinate reference system of x/y (from the input file or --crs), if known
+    crs: str | None = None
+    crs_wkt: str | None = None
 
 
 UNITS_OPTION = OptionSpec(
@@ -136,7 +159,12 @@ class Exporter(ABC):
 
 
 class Reader(ABC):
-    """Loads a point cloud source (file or directory) into an (N, 3) float64 array."""
+    """
+    Loads a point cloud source (file or directory).
+
+    ``read`` returns either an (N, 3) float64 array or a :class:`PointCloudData` with
+    metadata. Coordinates are returned in the file's own units; the pipeline converts.
+    """
 
     name: str = ""
     #: lower-case suffixes this reader accepts, e.g. (".ply", ".pcd"); "/" for directories
@@ -154,8 +182,8 @@ class Reader(ABC):
         return path.suffix.lower() in self.extensions
 
     @abstractmethod
-    def read(self, path: Path, **options: Any) -> "np.ndarray":
-        """Return finite (N, 3) float64 xyz. Raise InputDataError on bad input."""
+    def read(self, path: Path, **options: Any) -> "np.ndarray | PointCloudData":
+        """Return finite (N, 3) float64 xyz (or PointCloudData). Raise InputDataError on bad input."""
 
 
 class TreeMetric(ABC):

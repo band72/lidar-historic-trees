@@ -129,31 +129,42 @@ def load_source(
     reader_opts: tuple,
     demo: tuple,
     _upload: bytes | None,
-    units: str = "m",
+    units: str = "auto",
+    crop: str = "",
 ):
-    """Return (points, truth or None). ``key`` identifies the source for caching."""
+    """Return (LoadedCloud, truth or None). ``key`` identifies the source for caching."""
     if kind == "demo":
         n_trees, seed = demo
         plot = make_plot(n_trees=n_trees, seed=seed)
-        return plot.points, plot.truth
+        cloud = inv.LoadedCloud(
+            xyz=plot.points,
+            classification=None,
+            units="m",
+            crs=None,
+            crs_wkt=None,
+            sources=[f"demo plot ({n_trees} trees, seed {seed})"],
+        )
+        return cloud, plot.truth
+    opts = dict(reader_opts)
     if kind == "upload":
         suffix = Path(path).suffix
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fh:
             fh.write(_upload)
             tmp = fh.name
         try:
-            return inv.load_points(tmp, units=units, **dict(reader_opts)), None
+            cloud = inv.load_cloud(tmp, units=units, crop=crop or None, **opts)
+            cloud.sources = [path]
+            return cloud, None
         finally:
             Path(tmp).unlink(missing_ok=True)
-    return inv.load_points(path, units=units, **dict(reader_opts)), None
+    return inv.load_cloud(path, units=units, crop=crop or None, **opts), None
 
 
-def run_segmentation(
-    points: np.ndarray, gp: inv.GroundParams, sp: inv.SegmentParams, progress
-) -> dict:
+def run_segmentation(cloud, gp: inv.GroundParams, sp: inv.SegmentParams, progress) -> dict:
     t0 = time.perf_counter()
-    progress.progress(0.05, "ground segmentation (CSF)…")
-    ground, non_ground = inv.segment_ground(points, gp)
+    points = cloud.xyz
+    progress.progress(0.05, "ground segmentation…")
+    ground, non_ground = inv.segment_ground(points, gp, cloud.classification)
     progress.progress(0.35, "height normalization…")
     normalized = inv.normalize_heights(ground, non_ground, gp)
     progress.progress(0.5, "tree segmentation (quickshift++)…")
@@ -173,6 +184,11 @@ def run_segmentation(
         gp=gp,
         sp=sp,
         extent=points.max(0) - points.min(0),
+        units=cloud.units,
+        crs=cloud.crs,
+        crs_wkt=cloud.crs_wkt,
+        sources=cloud.sources,
+        classified=cloud.classification is not None,
     )
 
 
@@ -204,7 +220,7 @@ def sidebar_source():
     elif kind == "path":
         path = st.sidebar.text_input(
             "Path on this machine",
-            placeholder="/data/plot.laz or /data/run.bag or a ROS2 bag folder",
+            placeholder="/data/plot.laz, a folder of LAS tiles, a .bag or a ROS2 bag folder",
             help="Supported: "
             + ", ".join(
                 sorted({e for r in registry.readers.values() for e in r.extensions if e != "/"})
@@ -218,11 +234,20 @@ def sidebar_source():
                 st.sidebar.error("Path does not exist.")
             else:
                 key += f":{p.stat().st_mtime_ns}"
-                try:
-                    rdr = registry.reader_for(p)
-                except FIPError as exc:
-                    st.sidebar.error(str(exc))
-                    rdr = None
+                rdr = None
+                if p.is_dir() and not (p / "metadata.yaml").exists():
+                    try:
+                        tiles = inv.expand_inputs(p)
+                        st.sidebar.caption(
+                            f"Folder: {len(tiles)} point cloud files will be merged."
+                        )
+                    except FIPError as exc:
+                        st.sidebar.error(str(exc))
+                else:
+                    try:
+                        rdr = registry.reader_for(p)
+                    except FIPError as exc:
+                        st.sidebar.error(str(exc))
                 if rdr is not None and rdr.name == "rosbag":
                     with st.sidebar.expander("ROS bag options", expanded=True):
                         st.caption(rdr.description)
@@ -268,14 +293,23 @@ def sidebar_source():
     if kind != "demo":
         units = st.sidebar.selectbox(
             "Point cloud units",
-            ["m", "ft", "us_ft"],
+            ["auto", "m", "ft", "us_ft"],
             format_func=lambda u: {
+                "auto": "auto (from the file header, else metres)",
                 "m": "metres",
                 "ft": "feet (international)",
                 "us_ft": "US survey feet",
             }[u],
-            help="Units of the file's coordinates. Feet are converted to metres on reading.",
+            help="LAS files usually declare their units; feet are converted to metres on reading.",
         )
+        crop = st.sidebar.text_input(
+            "Crop (optional)",
+            "",
+            placeholder="xmin,ymin,xmax,ymax in file coordinates",
+            help="Only process this box. LAS files are cropped while reading, so large files fit in memory.",
+        ).strip()
+        st.session_state["crop"] = crop
+        key += f":crop={crop}"
         key += f":{units}"
     return kind, key, path, upload, demo, reader_opts, units
 
@@ -296,7 +330,11 @@ def sidebar_units(cloud_units: str) -> DisplayUnits:
         )
         or "auto"
     )
-    return DisplayUnits(cloud_units if choice == "auto" else choice)
+    if choice != "auto":
+        return DisplayUnits(choice)
+    if cloud_units == "auto":  # known once the file has been read
+        cloud_units = (st.session_state.get("seg") or {}).get("units", "m")
+    return DisplayUnits(cloud_units)
 
 
 def sidebar_segmentation():
@@ -322,6 +360,15 @@ def sidebar_segmentation():
                 help="Points this far above the local terrain are not ground (removes stem bases from the terrain model).",
             )
             rigid = st.select_slider("Rigidness", [1, 2, 3], 3, help="1 = steep terrain, 3 = flat.")
+            gsource = st.selectbox(
+                "Ground source",
+                ["auto", "csf", "classification"],
+                format_func=lambda v: {
+                    "auto": "auto (file's ground class if present, else CSF)",
+                    "csf": "always run CSF",
+                    "classification": "file's ground class (ASPRS 2)",
+                }[v],
+            )
         with st.expander("Segmentation (quickshift++)", expanded=True):
             k = st.slider(
                 "Neighbours k",
@@ -346,7 +393,11 @@ def sidebar_segmentation():
             min_pts = st.slider("Min points per tree", 10, 2000, 50, 10)
         go_btn = st.form_submit_button("Run segmentation", type="primary", width="stretch")
     gp = inv.GroundParams(
-        cloth_resolution=cloth, class_threshold=thresh, rigidness=rigid, refine_tolerance=refine
+        cloth_resolution=cloth,
+        class_threshold=thresh,
+        rigidness=rigid,
+        refine_tolerance=refine,
+        source=gsource,
     )
     sp = inv.SegmentParams(
         k=k, beta=beta, voxel_size=voxel, min_z=zr[0], max_z=zr[1], min_tree_points=min_pts
@@ -795,7 +846,15 @@ def plot_tree_3d(rec, fp: FitParams, max_points: int = 15000):
 
 def export_panel(records, fp: FitParams, seg: dict, source: str):
     st.subheader("Export")
-    ctx = inv.context_for(source, fp, units=U.unit, ground=seg["gp"], segment=seg["sp"])
+    ctx = inv.context_for(
+        source,
+        fp,
+        units=U.unit,
+        crs=seg.get("crs"),
+        crs_wkt=seg.get("crs_wkt"),
+        ground=seg["gp"],
+        segment=seg["sp"],
+    )
     cols = st.columns(max(len(registry.exporters), 1))
     for col, (name, exp) in zip(cols, sorted(registry.exporters.items())):
         with col:
@@ -846,7 +905,7 @@ def export_panel(records, fp: FitParams, seg: dict, source: str):
             st.download_button(
                 f"Download {exp.extension}",
                 _deferred_export(exp, records, ctx, opts),  # built only when clicked
-                file_name=f"trees{exp.extension}",
+                file_name=f"trees.{opts['format']}" if "format" in opts else f"trees{exp.extension}",
                 mime=exp.mime,
                 key=f"dl_{name}",
                 type="primary",
@@ -961,12 +1020,22 @@ def main():
         else:
             progress = st.progress(0.0, "loading point cloud…")
             try:
-                points, truth = load_source(
-                    kind, key, path, tuple(sorted(reader_opts.items())), demo, upload, cloud_units
+                cloud, truth = load_source(
+                    kind,
+                    key,
+                    path,
+                    tuple(sorted(reader_opts.items())),
+                    demo,
+                    upload,
+                    cloud_units,
+                    st.session_state.get("crop", "") if kind != "demo" else "",
                 )
-                seg = run_segmentation(points, gp, sp, progress)
+                seg = run_segmentation(cloud, gp, sp, progress)
                 seg.update(
-                    source_key=key, truth=truth, source=path or f"demo {demo}", n_points=len(points)
+                    source_key=key,
+                    truth=truth,
+                    source="; ".join(cloud.sources),
+                    n_points=len(cloud.xyz),
                 )
                 st.session_state["seg"] = seg
                 stale = False
@@ -978,6 +1047,8 @@ def main():
                 _fail("Segmentation", exc)
                 return
             progress.empty()
+            if cloud_units == "auto" and seg.get("units", "m") != U.unit:
+                st.rerun()  # units came from the file header: redraw the sidebar in those units
 
     if seg is None:
         st.info(
@@ -1027,7 +1098,9 @@ def main():
         st.plotly_chart(plot_dbh_ci(df, seg.get("truth")), width="stretch", theme="streamlit")
         st.caption(
             f"Bars are {fp.confidence:.0%} confidence intervals ({fp.ci_method}). "
-            f"Segmentation: {seg['n_points']:,} points, {len(seg['trees'])} candidates, {seg['seconds']:.1f} s."
+            f"Segmentation: {seg['n_points']:,} points, {len(seg['trees'])} candidates, {seg['seconds']:.1f} s. "
+            f"Input units: {LABELS[seg.get('units', 'm')]}; CRS: {seg.get('crs') or 'unknown'}; "
+            f"ground: {'file classification' if seg.get('classified') and seg['gp'].source != 'csf' else 'CSF'}."
         )
 
     with tab_tree:

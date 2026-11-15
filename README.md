@@ -17,7 +17,7 @@ LiDAR Tree Inventory turns a point cloud of a forest plot into a tree list. For 
 - quality flags that say when to distrust a measurement: one-sided scans, clutter, wide intervals
 - basal area, plus any extra measurements added through plugins
 
-Results can be explored in an interactive web app and exported as **CSV** (spreadsheets), **DXF** (CAD: DBH circles at true elevation) or **GeoJSON** (GIS).
+Results can be explored in an interactive web app and exported as **CSV** (spreadsheets), **DXF** (CAD: DBH circles at true elevation), **GeoJSON** (GIS points or DBH circles) and a **segmented LAS/LAZ** point cloud. It reads PLY, PCD, LAS/LAZ (with units, CRS and ground classes from the header), text, NumPy and ROS bags.
 
 It builds on the ICRA 2024 research code [PRBonn/forest_inventory_pipeline](https://github.com/PRBonn/forest_inventory_pipeline) (see [Citation](#citation)).
 
@@ -216,19 +216,23 @@ Run `fip --help` for the command list, and `fip <command> --help` for a command'
 ### `fip inventory`
 
 ```bash
-fip inventory INPUT [options]
+fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 ```
 
 | Option | Description |
 |---|---|
 | `-o, --output DIR` | Output folder (default `fip_output`). It holds the exports and `fip.log` |
 | `-c, --config FILE` | YAML/JSON settings file, see [Configuration](#7-configuration) |
-| `-e, --export NAME` | Exporter to run; repeatable. Default: `-e csv -e dxf` |
+| `-e, --export NAME` | Exporter to run; repeatable: `csv`, `dxf`, `geojson`, `points` or a plugin. Default: `-e csv -e dxf` |
 | `-E, --export-option NAME.KEY=VALUE` | Exporter option, e.g. `-E dxf.z_mode=plan`; repeatable |
 | `--reader NAME` | Force a reader (normally picked from the file extension) |
 | `-R, --reader-option KEY=VALUE` | Reader option, e.g. `-R topic=/points`; repeatable |
 | `--plugin-dir DIR` | Load extra plugins from this folder; repeatable |
-| `-u, --units m\|ft\|us_ft` | Length unit of the input cloud, and of `--breast-height` and `--model-sd` (see [Metres and feet](#metres-and-feet)) |
+| `-u, --units auto\|m\|ft\|us_ft` | Length unit of the input (`auto` = from the LAS header, else metres), and of `--breast-height`, `--model-sd` and `--crop` (see [Metres and feet](#metres-and-feet)) |
+| `--crop XMIN,YMIN,XMAX,YMAX` | Process only this box (input coordinates); LAS is cropped while reading |
+| `--ground-source auto\|csf\|classification` | Ground from the file's classification if present (`auto`), always CSF, or require the classification |
+| `--crs EPSG:xxxx` | Coordinate system to record in the outputs (default: from the file header) |
+| `--keep-noise` | Keep points classified as noise (ASPRS 7/18) |
 | `--output-units m\|ft\|us_ft` | Length unit of the exports (default: same as `--units`) |
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
@@ -239,9 +243,14 @@ fip inventory INPUT [options]
 Examples:
 
 ```bash
-# all three exporters, DXF as a flat 2D plan, GeoJSON tagged with a CRS
-fip inventory plot.laz -o out --plugin-dir plugins -e csv -e dxf -e geojson \
-    -E dxf.z_mode=plan -E geojson.crs=EPSG:25832
+# every format: table, CAD, GIS circles, and the segmented cloud for checking in CloudCompare
+fip inventory plot.laz -o out -e csv -e dxf -e geojson -e points -E geojson.geometry=circle
+
+# a 50 m plot cut from a large State Plane tile; units and CRS come from the header
+fip inventory big_tile.laz -o out --crop 656100,1312300,656264,1312464
+
+# a folder of tiles, European Excel CSV, DXF as a flat 2D plan
+fip inventory tiles/ -o out -E csv.delimiter=semicolon -E csv.decimal=comma -E dxf.z_mode=plan
 
 # a US plot in feet: 4.5 ft breast height, 90 % intervals, bootstrap; outputs in feet and inches
 fip inventory plot.laz -o out --units ft --confidence 0.9 --ci-method bootstrap
@@ -278,9 +287,17 @@ See [section 9](#9-calibrating-the-confidence-interval).
 | Format | Extensions | Notes |
 |---|---|---|
 | PLY / PCD / XYZ | `.ply .pcd .xyz .xyzn .xyzrgb .pts` | Read with Open3D |
-| LAS / LAZ | `.las .laz` | Scaled coordinates are applied. LAZ is supported in the installers and with the `las` extra |
+| LAS / LAZ | `.las .laz` | Reads **units and coordinate system from the header**, keeps the **ground classification**, drops noise points (classes 7/18), and can **crop while reading** to save memory. LAZ is supported in the installers and with the `las` extra |
 | NumPy | `.npy` | An `N × 3` (or wider) array |
 | Text | `.txt .csv .asc` | The first three numeric columns are x, y, z. Header lines are skipped and the delimiter is detected automatically |
+
+**Several files / tiles:** pass several files (`fip inventory a.laz b.laz`) or a folder (`fip inventory tiles/`). They are merged into one plot, and must share the same units and coordinate system.
+
+**Cropping:** `--crop xmin,ymin,xmax,ymax` (in the file's coordinates) processes only that box. For LAS/LAZ it's applied while reading, so a plot can be cut from a multi-gigabyte tile without loading the whole tile. In the app, use the *Crop* field.
+
+**Existing ground classification:** if a LAS file has ground points (ASPRS class 2), they are used directly instead of re-running the ground filter (`--ground-source auto`, the default). Use `--ground-source csf` to always run CSF, or `classification` to insist on the file's classes.
+
+**Coordinate system:** the CRS in the LAS header (WKT or GeoTIFF keys) is detected and passed to every output: `trees.prj`, GeoJSON, the segmented LAS and `run.json`. Override it, or set it for files without one, with `--crs EPSG:xxxx`. Files in longitude/latitude are refused with a message, because they need reprojecting to metres or feet first.
 
 Requirements:
 - **Units: metres or feet.** Tell the program which one your cloud uses (see [Metres and feet](#metres-and-feet) below). Clouds in millimetres must be converted first.
@@ -295,7 +312,7 @@ Requirements:
 | international foot | `ft` | 0.3048 m |
 | US survey foot | `us_ft` | 1200/3937 m. Many US State Plane systems use it; over large coordinate values it differs from `ft` |
 
-- **Input:** `fip inventory plot.las --units ft`, or *Point cloud units* in the app. The cloud is converted to metres on reading, and all calculations run in metres.
+- **Input:** detected automatically from LAS headers (`--units auto`, the default; files without units are assumed to be metres). Set it with `--units ft` / `us_ft` / `m`, or *Point cloud units* in the app. The cloud is converted to metres on reading, and all calculations run in metres.
 - **Output:** exports use the same unit as the input by default, so a feet cloud gives feet CSV, DXF and GeoJSON with your **original coordinates**. Choose differently with `--output-units m`, per exporter with `-E dxf.units=m`, or with *Display & export units* in the app.
 - **DBH:** shown in cm for metric output and in **inches** for feet. The CSV always has both `dbh_cm` and `dbh_in`, and a `length_unit` column says which unit the other lengths are in.
 - **US breast height:** with `--units ft` or `us_ft`, breast height defaults to **4.5 ft** (1.37 m). `--breast-height` and `--model-sd` are then given in feet too, e.g. `--breast-height 4.5`.
@@ -383,9 +400,27 @@ Layers:
 
 Each DBH circle also carries extended data (XDATA, application id `FIP`): the tree id, DBH, CI, status and units. In feet the drawing's units are set to feet (or US survey feet for `us_ft`), and labels show inches. Other options: `include_ci`, `include_labels`, `include_axis`, `text_height`, `units`.
 
-### `trees.geojson` (example plugin)
+### `trees.geojson`: for GIS (`-e geojson`)
 
-Point features `[x, y, bh_elevation]` with DBH, CI and status properties, for QGIS or ArcGIS. Enable it with `--plugin-dir plugins -e geojson`. Add `-E geojson.crs=EPSG:xxxx` if your coordinates are georeferenced.
+One feature per tree, with DBH, CI, status and metric properties, for QGIS, ArcGIS or web maps:
+- `-E geojson.geometry=point` (default): a point at `[x, y, bh_elevation]`
+- `-E geojson.geometry=circle`: the DBH cross-section as a polygon, so stems draw to scale on a map
+
+The input's CRS is recorded (override with `-E geojson.crs=EPSG:xxxx`). Projected coordinates are written as they are, which QGIS and GDAL read correctly.
+
+### `trees.laz`: segmented point cloud (`-e points`)
+
+Every point of every tree, at its **real elevation**, with extra dimensions `tree_id` and `height_above_ground`. Open it in CloudCompare or QGIS and colour by `tree_id` to check the segmentation against the table. Format: `-E points.format=laz|las|ply`. The input CRS is written into LAS/LAZ files. It contains the height slice that was segmented (`segment.min_z`..`max_z`), not the whole input cloud.
+
+### `run.json` and `trees.prj`
+
+Every run also writes:
+- **`run.json`**: the software version, time, input files, input and output units, CRS, all parameters, the result summary, and every output file with its size and SHA-256 checksum, so a result can be traced and verified later
+- **`trees.prj`**: the coordinate system as WKT (when known), which lets GIS software place `trees.csv` and the DXF correctly
+
+### CSV options
+
+`-E csv.delimiter=comma|semicolon|tab`, `-E csv.decimal=point|comma` (use `semicolon` + `comma` for Excel in German, French and similar locales), `-E csv.precision=4`, `-E csv.include_failed=true|false`, `-E csv.units=auto|m|ft|us_ft`.
 
 ### `fip.log`
 
@@ -459,11 +494,11 @@ New input formats, export formats and per-tree measurements can be added as plug
 
 ```bash
 fip plugins --plugin-dir plugins                 # list what is available
-fip inventory plot.laz --plugin-dir plugins -e geojson
+fip inventory plot.laz --plugin-dir plugins           # adds girth columns to every export
 fip app --plugin-dir plugins
 ```
 
-A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to/folder`, or install a package that uses the `forest_inventory_pipeline.plugins` entry point. A broken plugin is logged and skipped. See **[plugins/README.md](plugins/README.md)** for the API and examples of each type (reader, exporter, metric). Only load plugin folders you trust: plugins run as normal code.
+The `plugins/` folder includes an example metric (`girth_metric.py`: stem circumference). A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to/folder`, or install a package that uses the `forest_inventory_pipeline.plugins` entry point. A broken plugin is logged and skipped. See **[plugins/README.md](plugins/README.md)** for the API and examples of each type (reader, exporter, metric). Only load plugin folders you trust: plugins run as normal code.
 
 ---
 
@@ -484,6 +519,9 @@ A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to
 | **Web app doesn't open** | Open `http://localhost:8501` yourself (the console shows the actual port). Use `fip app --port 8600` if a firewall blocks the default |
 | **Windows: SmartScreen warning** | The installer is unsigned: *More info → Run anyway* |
 | **Linux: "glibc … is too old"** | Use Ubuntu 22.04+ / Debian 12+, or [install from source](#from-source-for-development-or-the-latest-code) |
+| **"coordinates are longitude/latitude"** | Reproject the file to a projected CRS (e.g. UTM) with PDAL or LAStools first |
+| **Large file, out of memory** | Cut out the plot with `--crop` (LAS/LAZ are cropped while reading) |
+| **Tiles: "different coordinate systems / units"** | Tiles from different projects can't be merged; process them separately |
 | **Anything else** | Run `fip self-test`, and check `fip.log` or the app's **Log** tab. When reporting a problem, include the log |
 
 ---
@@ -492,7 +530,7 @@ A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 76 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 90 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 ```
 

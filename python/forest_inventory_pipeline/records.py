@@ -70,6 +70,16 @@ class TreeRecord:
     extra: dict[str, Any] = field(default_factory=dict)
     # height-normalized points of this tree; never exported, used by metric plugins / viewer
     points: np.ndarray | None = field(default=None, repr=False, compare=False)
+    #: terrain elevation (m) under each of ``points``; points + [0, 0, point_ground] = real xyz
+    point_ground: np.ndarray | None = field(default=None, repr=False, compare=False)
+
+    def world_points(self) -> np.ndarray | None:
+        """This tree's points in the input frame (metres, real elevation), if kept."""
+        if self.points is None or self.point_ground is None:
+            return None
+        out = self.points.astype(np.float64, copy=True)
+        out[:, 2] += self.point_ground
+        return out
 
     @property
     def fitted(self) -> bool:
@@ -84,7 +94,11 @@ class TreeRecord:
 
         unit = normalize_unit(unit)
         # not dataclasses.asdict: that would deep-copy the point array
-        d = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "points"}
+        d = {
+            f.name: getattr(self, f.name)
+            for f in fields(self)
+            if f.name not in ("points", "point_ground")
+        }
         extra = dict(d.pop("extra"))
         ax = d.pop("axis")
         d["axis_x"], d["axis_y"], d["axis_z"] = ax

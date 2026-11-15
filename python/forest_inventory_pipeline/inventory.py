@@ -43,6 +43,7 @@ from .plugins import ExportContext, load_plugins, registry
 from .preprocess.height_normalization import interpolate_ground_z
 from .records import STATUS_FAILED, STATUS_OK, STATUS_WARNING, TreeRecord
 from .traits.dbh.robust_fit import FitParams, fit_stem
+from .units import METRES_PER_UNIT as METRES_PER_UNIT_
 from .utils import logger
 
 ProgressFn = Callable[[float, str], None]
@@ -69,8 +70,15 @@ class GroundParams:
     #: drop CSF "ground" points this far above the local terrain (None disables)
     refine_tolerance: float | None = 0.15
     refine_cell: float = 1.0
+    #: where ground comes from: "auto" (the file's ASPRS ground class if present, else CSF),
+    #: "csf" (always run the Cloth Simulation Filter), "classification" (require class 2)
+    source: str = "auto"
 
     def __post_init__(self):
+        _require(
+            self.source in ("auto", "csf", "classification"),
+            f"source must be auto, csf or classification, got {self.source!r}",
+        )
         _require(
             self.refine_tolerance is None or 0.01 <= self.refine_tolerance <= 2,
             f"refine_tolerance must be None or in [0.01, 2] m, got {self.refine_tolerance}",
@@ -147,46 +155,180 @@ def check_band_inside_slice(fit: FitParams, seg: SegmentParams) -> list[str]:
 # --------------------------------------------------------------------------- stages
 
 
-def load_points(
-    path: str | Path, reader: str | None = None, units: str = "m", **reader_options
-) -> np.ndarray:
-    """
-    Read a point cloud and return it in metres.
+NOISE_CLASSES = (7, 18)  # ASPRS low / high noise
 
-    :param units: length unit of the file's coordinates: m, ft or us_ft.
-    """
-    from .units import METRES_PER_UNIT, guess_unit_hint, normalize_unit
 
-    units = normalize_unit(units)
-    path = Path(path).expanduser()
-    if not path.exists():
-        raise InputDataError(f"input not found: {path}")
+@dataclass
+class LoadedCloud:
+    """A point cloud in metres plus what was learned about it while reading."""
+
+    xyz: np.ndarray
+    classification: np.ndarray | None
+    units: str  # the unit the file(s) were in (used as the default output unit)
+    crs: str | None
+    crs_wkt: str | None
+    sources: list[str]
+
+
+def expand_inputs(paths: str | Path | Sequence[str | Path]) -> list[Path]:
+    """Files as given; a folder (that is not a ROS2 bag) expands to the supported files in it."""
     load_plugins()
-    rdr = registry.reader_for(path, reader)
-    logger.info(f"reading {path} with reader '{rdr.name}'")
+    items = [paths] if isinstance(paths, (str, Path)) else list(paths)
+    if not items:
+        raise InputDataError("no input given")
+    out: list[Path] = []
+    for item in items:
+        p = Path(item).expanduser()
+        if not p.exists():
+            raise InputDataError(f"input not found: {p}")
+        if p.is_dir() and not (p / "metadata.yaml").exists():
+            supported = {e for r in registry.readers.values() for e in r.extensions if e != "/"}
+            found = sorted(f for f in p.iterdir() if f.is_file() and f.suffix.lower() in supported)
+            if not found:
+                raise InputDataError(
+                    f"{p}: folder has no supported point cloud files ({sorted(supported)})"
+                )
+            logger.info(f"{p}: {len(found)} files")
+            out += found
+        else:
+            out.append(p)
+    return out
+
+
+def load_cloud(
+    paths: str | Path | Sequence[str | Path],
+    reader: str | None = None,
+    units: str = "auto",
+    crop: str | Sequence[float] | None = None,
+    keep_noise: bool = False,
+    **reader_options,
+) -> LoadedCloud:
+    """
+    Read one or more point clouds (e.g. LAS tiles) and return them merged, in metres.
+
+    :param units: unit of the files' coordinates: ``auto`` (from the file header, metres if
+        none is declared), ``m``, ``ft`` or ``us_ft``. An explicit unit overrides the header.
+    :param crop: ``xmin,ymin,xmax,ymax`` in the files' own units; LAS files are cropped
+        while reading, so only the kept points are held in memory.
+    :param keep_noise: keep points classified as noise (ASPRS 7, 18); dropped by default.
+    """
+    from .plugins import PointCloudData
+    from .plugins.builtin.readers import parse_bbox
+    from .units import guess_unit_hint, normalize_unit
+
+    requested = "auto" if units in (None, "", "auto") else normalize_unit(units)
+    bbox = parse_bbox(crop)
+    files = expand_inputs(paths)
+    parts: list[tuple[Path, PointCloudData]] = []
     t0 = time.perf_counter()
-    try:
-        xyz = rdr.read(path, **reader_options)
-    except InputDataError:
-        raise
-    except Exception as exc:
+    for path in files:
+        rdr = registry.reader_for(path, reader)
+        opts = dict(reader_options)
+        if bbox is not None and any(o.name == "crop" for o in rdr.options):
+            opts["crop"] = ",".join(str(v) for v in bbox)
+        logger.info(f"reading {path} with reader '{rdr.name}'")
+        try:
+            data = rdr.read(path, **opts)
+        except InputDataError:
+            raise
+        except Exception as exc:
+            raise InputDataError(
+                f"reader '{rdr.name}' failed on {path.name}: {type(exc).__name__}: {exc}"
+            ) from exc
+        if not isinstance(data, PointCloudData):
+            data = PointCloudData(xyz=np.asarray(data, dtype=np.float64))
+        if bbox is not None and not data.cropped:
+            m = (
+                (data.xyz[:, 0] >= bbox[0])
+                & (data.xyz[:, 0] <= bbox[2])
+                & (data.xyz[:, 1] >= bbox[1])
+                & (data.xyz[:, 1] <= bbox[3])
+            )
+            data.xyz = data.xyz[m]
+            if data.classification is not None:
+                data.classification = data.classification[m]
+        if len(data.xyz) == 0:
+            logger.warning(f"{path.name}: no points (after crop); skipped")
+            continue
+        parts.append((path, data))
+    if not parts:
+        raise InputDataError("no points to process" + (f" inside crop box {bbox}" if bbox else ""))
+
+    # units: explicit beats header; tiles must agree
+    declared = {d.units for _, d in parts if d.units}
+    if len(declared) > 1:
         raise InputDataError(
-            f"reader '{rdr.name}' failed on {path.name}: {type(exc).__name__}: {exc}"
-        ) from exc
-    if units != "m":
-        xyz = xyz * METRES_PER_UNIT[units]
-        logger.info(f"converted coordinates from {units} to metres")
+            f"input files declare different units {sorted(declared)}; process them separately"
+        )
+    header_unit = declared.pop() if declared else None
+    if requested == "auto":
+        unit = header_unit or "m"
+        logger.info(
+            f"units: {unit} ({'from the file header' if header_unit else 'none declared, assuming metres'})"
+        )
+    else:
+        unit = requested
+        if header_unit and header_unit != unit:
+            logger.warning(
+                f"units set to {unit}, but the file header says {header_unit}; using {unit}"
+            )
+    z_declared = {d.z_units for _, d in parts if d.z_units}
+    z_unit = unit if (requested != "auto" or not z_declared) else z_declared.pop()
+    if z_unit != unit:
+        logger.warning(
+            f"horizontal units {unit} but vertical units {z_unit} (from header); converting each"
+        )
+
+    crss = {d.crs for _, d in parts if d.crs}
+    if len(crss) > 1:
+        raise InputDataError(f"input files use different coordinate systems {sorted(crss)}")
+    crs = crss.pop() if crss else None
+    wkt = next((d.crs_wkt for _, d in parts if d.crs_wkt), None)
+
+    xyz = np.concatenate([d.xyz for _, d in parts])
+    have_cls = all(d.classification is not None for _, d in parts)
+    cls = np.concatenate([d.classification for _, d in parts]) if have_cls else None
+    if len(parts) > 1 and not have_cls and any(d.classification is not None for _, d in parts):
+        logger.warning("only some files are classified; ignoring the classification")
+
+    if cls is not None and not keep_noise:
+        noise = np.isin(cls, NOISE_CLASSES)
+        if noise.any():
+            logger.info(f"dropped {int(noise.sum()):,} points classified as noise (ASPRS 7/18)")
+            xyz, cls = xyz[~noise], cls[~noise]
+
+    if unit != "m" or z_unit != "m":
+        f_xy, f_z = METRES_PER_UNIT_[unit], METRES_PER_UNIT_[z_unit]
+        xyz = xyz * np.array([f_xy, f_xy, f_z])
+        logger.info(f"converted coordinates from {unit} to metres")
     else:
         hint = guess_unit_hint(xyz)
         if hint:
-            logger.warning(f"{path.name}: {hint}")
-    _validate_points(xyz, path.name)
+            logger.warning(f"{hint}")
+    name = files[0].name if len(files) == 1 else f"{len(files)} files"
+    _validate_points(xyz, name)
     extent = xyz.max(axis=0) - xyz.min(axis=0)
     logger.info(
-        f"loaded {len(xyz):,} points in {time.perf_counter() - t0:.1f}s; extent "
+        f"loaded {len(xyz):,} points from {name} in {time.perf_counter() - t0:.1f}s; extent "
         f"{extent[0]:.1f} x {extent[1]:.1f} x {extent[2]:.1f} m"
+        + (f"; CRS {crs}" if crs else "")
+        + ("; has ground classification" if cls is not None and np.any(cls == 2) else "")
     )
-    return xyz
+    return LoadedCloud(
+        xyz=xyz,
+        classification=cls,
+        units=unit,
+        crs=crs,
+        crs_wkt=wkt,
+        sources=[str(f) for f, _ in parts],
+    )
+
+
+def load_points(
+    path: str | Path, reader: str | None = None, units: str = "m", **reader_options
+) -> np.ndarray:
+    """Read a point cloud and return xyz in metres (see :func:`load_cloud` for options)."""
+    return load_cloud(path, reader=reader, units=units, **reader_options).xyz
 
 
 def _validate_points(xyz: np.ndarray, name: str) -> None:
@@ -210,8 +352,65 @@ def _validate_points(xyz: np.ndarray, name: str) -> None:
         )
 
 
-def segment_ground(points: np.ndarray, params: GroundParams) -> tuple[np.ndarray, np.ndarray]:
-    """Return (ground_xyz, non_ground_xyz) using the Cloth Simulation Filter."""
+GROUND_CLASSES = (2, 8)  # ASPRS ground, model key-point (a ground subset in LAS 1.0-1.3)
+
+
+def segment_ground(
+    points: np.ndarray, params: GroundParams, classification: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Return (ground_xyz, non_ground_xyz).
+
+    Uses the file's ASPRS ground classification when ``params.source`` allows it and the
+    cloud has one (at least 100 ground points), otherwise the Cloth Simulation Filter.
+    The stem-base refinement runs in both cases.
+    """
+    use_cls = False
+    if params.source != "csf" and classification is not None:
+        is_ground = np.isin(classification, GROUND_CLASSES)
+        n_ground = int(is_ground.sum())
+        if n_ground >= 100 and n_ground < len(points):
+            use_cls = True
+        elif params.source == "classification":
+            raise StageError(
+                "ground",
+                f"the file has only {n_ground} ground-classified points; use ground source csf",
+            )
+    elif params.source == "classification":
+        raise StageError(
+            "ground", "ground source is 'classification' but the input has no classification"
+        )
+    if use_cls:
+        t0 = time.perf_counter()
+        ground_xyz, non_ground_xyz = points[is_ground], points[~is_ground]
+        logger.info(
+            f"ground from the file's classification (ASPRS 2/8): {len(ground_xyz):,} points"
+        )
+        return _finish_ground(ground_xyz, non_ground_xyz, params, t0)
+    return _segment_ground_csf(points, params)
+
+
+def _finish_ground(ground_xyz, non_ground_xyz, params: GroundParams, t0: float):
+    if params.refine_tolerance is not None:
+        ground_xyz, lifted = refine_ground(ground_xyz, params.refine_cell, params.refine_tolerance)
+        if len(lifted):
+            non_ground_xyz = np.concatenate([non_ground_xyz, lifted])
+            logger.info(
+                f"ground refinement moved {len(lifted):,} points (stem bases, low vegetation) "
+                f"more than {params.refine_tolerance} m above the terrain to non-ground"
+            )
+    if len(non_ground_xyz) == 0:
+        raise StageError(
+            "ground", "every point was classified as ground; try a smaller class_threshold"
+        )
+    logger.info(
+        f"ground segmentation: {len(ground_xyz):,} ground / {len(non_ground_xyz):,} non-ground "
+        f"in {time.perf_counter() - t0:.1f}s"
+    )
+    return ground_xyz, non_ground_xyz
+
+
+def _segment_ground_csf(points: np.ndarray, params: GroundParams) -> tuple[np.ndarray, np.ndarray]:
     try:
         import CSF
     except ImportError as exc:
@@ -233,24 +432,7 @@ def segment_ground(points: np.ndarray, params: GroundParams) -> tuple[np.ndarray
             "ground",
             f"only {len(g)} ground points found; try a larger cloth_resolution or class_threshold",
         )
-    ground_xyz, non_ground_xyz = points[g], points[ng]
-    if params.refine_tolerance is not None:
-        ground_xyz, lifted = refine_ground(ground_xyz, params.refine_cell, params.refine_tolerance)
-        if len(lifted):
-            non_ground_xyz = np.concatenate([non_ground_xyz, lifted])
-            logger.info(
-                f"ground refinement moved {len(lifted):,} points (stem bases, low vegetation) "
-                f"more than {params.refine_tolerance} m above the terrain to non-ground"
-            )
-    if len(non_ground_xyz) == 0:
-        raise StageError(
-            "ground", "every point was classified as ground; try a smaller class_threshold"
-        )
-    logger.info(
-        f"ground segmentation: {len(ground_xyz):,} ground / {len(non_ground_xyz):,} non-ground "
-        f"in {time.perf_counter() - t0:.1f}s"
-    )
-    return ground_xyz, non_ground_xyz
+    return _finish_ground(points[g], points[ng], params, t0)
 
 
 def refine_ground(
@@ -510,6 +692,13 @@ def fit_trees(
             n_points=int(len(pts)),
             n_band_points=int(len(band)),
             points=pts if keep_points else None,
+            point_ground=(
+                interpolate_ground_z(
+                    ground, pts, k=gp.idw_k, p=gp.idw_p, rmax=gp.idw_rmax, kdtree=ground_tree
+                )
+                if keep_points
+                else None
+            ),
         )
         rec.extra["cluster_id"] = parents.get(tid, tid)
         if sf is None and parents.get(tid, tid) != tid:
@@ -611,30 +800,118 @@ def export_records(
     context: ExportContext,
     stem: str = "trees",
     options: dict[str, dict] | None = None,
+    metadata: bool = True,
 ) -> list[Path]:
-    """Run each requested exporter. A failing exporter is logged and the rest still run."""
+    """
+    Run each requested exporter. A failing exporter is logged and the rest still run.
+
+    With ``metadata`` also writes ``<stem>.prj`` (when the CRS WKT is known) and
+    ``run.json``: inputs, units, CRS, parameters, summary, and every output's size and
+    SHA-256, so results can be traced and verified later.
+    """
     load_plugins()
     options = options or {}
-    written, errors = [], []
+    written, errors, outputs = [], [], []
     for fmt in formats:
         try:
             exp = registry.exporter(fmt)
             path = Path(output_dir) / f"{stem}{exp.extension}"
-            written.append(exp.export(records, path, context, **options.get(fmt, {})))
+            out = exp.export(records, path, context, **options.get(fmt, {}))
+            written.append(out)
+            outputs.append(
+                {"exporter": fmt, "options": options.get(fmt, {}), "file": Path(out).name}
+            )
         except Exception as exc:
             logger.error(f"export '{fmt}' failed: {type(exc).__name__}: {exc}")
             errors.append(f"{fmt}: {exc}")
     if errors and not written:
         raise StageError("export", "; ".join(errors))
+    if metadata:
+        written += _write_metadata(records, Path(output_dir), stem, context, outputs, errors)
     return written
 
 
-def context_for(source: str, fit: FitParams, units: str = "m", **params) -> ExportContext:
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def software_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("forest_inventory_pipeline")
+    except Exception:
+        return "unknown"
+
+
+def _write_metadata(
+    records, output_dir: Path, stem: str, context: ExportContext, outputs, errors
+) -> list[Path]:
+    import datetime
+    import json
+    import platform
+
+    from .plugins import atomic_write
+
+    extra: list[Path] = []
+    if context.crs_wkt:
+        prj = output_dir / f"{stem}.prj"
+        with atomic_write(prj, "w", encoding="utf-8") as fh:
+            fh.write(context.crs_wkt)
+        extra.append(prj)
+        outputs.append({"exporter": "prj", "file": prj.name})
+    for o in outputs:
+        f = output_dir / o["file"]
+        if f.exists():
+            o["bytes"] = f.stat().st_size
+            o["sha256"] = _sha256(f)
+    s = summarize(records)
+    meta = {
+        "software": {
+            "name": "LiDAR Tree Inventory",
+            "version": software_version(),
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+        },
+        "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+        "source": context.source,
+        "output_units": context.units,
+        "crs": context.crs,
+        "breast_height_m": context.breast_height,
+        "confidence": context.confidence,
+        "summary": s,
+        "outputs": outputs,
+        "errors": errors,
+        "parameters": context.parameters,
+    }
+    path = output_dir / "run.json"
+    with atomic_write(path, "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2, default=str)
+    logger.info(f"run metadata written: {path}")
+    return extra + [path]
+
+
+def context_for(
+    source: str,
+    fit: FitParams,
+    units: str = "m",
+    crs: str | None = None,
+    crs_wkt: str | None = None,
+    **params,
+) -> ExportContext:
     from .units import normalize_unit
 
     return ExportContext(
         source=source,
         units=normalize_unit(units),
+        crs=crs,
+        crs_wkt=crs_wkt,
         breast_height=fit.breast_height,
         confidence=fit.confidence,
         parameters={

@@ -91,5 +91,8 @@ class E57Reader(Reader):
 
 ## Included example
 
-- `geojson_export.py`: tree points with DBH/CI as GeoJSON, for QGIS/ArcGIS
-  (`fip inventory cloud.laz --plugin-dir plugins -e csv -e dxf -e geojson`).
+- `girth_metric.py`: stem circumference at breast height, with CI bounds, as columns in every
+  export (`fip inventory cloud.laz --plugin-dir plugins`).
+
+GeoJSON, segmented-points, CSV and DXF exports are built in; see
+`python/forest_inventory_pipeline/plugins/builtin/` for complete exporter and reader examples.

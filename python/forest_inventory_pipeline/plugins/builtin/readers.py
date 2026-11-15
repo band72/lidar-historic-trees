@@ -17,7 +17,7 @@ import numpy as np
 
 from ...errors import InputDataError
 from ...utils import logger
-from ..base import OptionSpec, Reader
+from ..base import OptionSpec, PointCloudData, Reader
 from ..registry import register_reader
 
 
@@ -55,19 +55,35 @@ class Open3DReader(Reader):
         return _clean(tpcd.point.positions.numpy(), Path(path))
 
 
+def parse_bbox(value) -> tuple[float, float, float, float] | None:
+    """'xmin,ymin,xmax,ymax' (or a 4-sequence) -> tuple, None for empty."""
+    if value in (None, "", ()):
+        return None
+    parts = value.split(",") if isinstance(value, str) else list(value)
+    try:
+        xmin, ymin, xmax, ymax = (float(v) for v in parts)
+    except (TypeError, ValueError):
+        raise InputDataError(f"crop must be 'xmin,ymin,xmax,ymax', got {value!r}") from None
+    if not (xmin < xmax and ymin < ymax):
+        raise InputDataError(f"crop box is empty: {value!r} (need xmin < xmax and ymin < ymax)")
+    return xmin, ymin, xmax, ymax
+
+
 @register_reader
 class LasReader(Reader):
     name = "las"
     extensions = (".las", ".laz")
     label = "LAS / LAZ"
-    description = "ASPRS LAS/LAZ point clouds (laspy). Scaled coordinates are applied."
+    description = (
+        "ASPRS LAS/LAZ (laspy). Reads units and CRS from the header, keeps the ground "
+        "classification, and can crop while reading (low memory for large files)."
+    )
     options = (
-        OptionSpec(
-            "ground_class_only", False, "keep only ASPRS class 2 (ground) points - for debugging"
-        ),
+        OptionSpec("crop", "", "only keep points in 'xmin,ymin,xmax,ymax' (file units)"),
+        OptionSpec("chunk_size", 5_000_000, "points per read chunk", min=10_000, max=100_000_000),
     )
 
-    def read(self, path: Path, **options: Any) -> np.ndarray:
+    def read(self, path: Path, **options: Any) -> PointCloudData:
         opts = self.resolve_options(options)
         try:
             import laspy
@@ -75,14 +91,52 @@ class LasReader(Reader):
             raise InputDataError(
                 "LAS input needs laspy: pip install 'forest_inventory_pipeline[las]'"
             ) from exc
+        from ...crs import from_las_header
+
+        path = Path(path)
+        bbox = parse_bbox(opts["crop"])
+        xyz_parts, cls_parts = [], []
         try:
-            las = laspy.read(str(path))
+            with laspy.open(str(path)) as fh:
+                header = fh.header
+                info = from_las_header(header)
+                total = header.point_count
+                logger.info(
+                    f"{path.name}: LAS {header.version}, point format {header.point_format.id}, "
+                    f"{total:,} points; CRS {info.crs or 'unknown'}, units {info.units or 'not declared'}"
+                )
+                for chunk in fh.chunk_iterator(int(opts["chunk_size"])):
+                    x, y, z = np.asarray(chunk.x), np.asarray(chunk.y), np.asarray(chunk.z)
+                    cls = np.asarray(chunk.classification, dtype=np.uint8)
+                    if bbox is not None:
+                        m = (x >= bbox[0]) & (x <= bbox[2]) & (y >= bbox[1]) & (y <= bbox[3])
+                        x, y, z, cls = x[m], y[m], z[m], cls[m]
+                    xyz_parts.append(np.c_[x, y, z])
+                    cls_parts.append(cls)
+        except InputDataError:
+            raise
         except Exception as exc:  # laspy raises a variety of errors (incl. missing LAZ backend)
-            raise InputDataError(f"{Path(path).name}: cannot read LAS/LAZ: {exc}") from exc
-        xyz = np.asarray(las.xyz)
-        if opts["ground_class_only"]:
-            xyz = xyz[np.asarray(las.classification) == 2]
-        return _clean(xyz, Path(path))
+            raise InputDataError(f"{path.name}: cannot read LAS/LAZ: {exc}") from exc
+        if info.geographic:
+            raise InputDataError(
+                f"{path.name}: coordinates are longitude/latitude ({info.crs or 'geographic CRS'}). "
+                "Reproject to a projected CRS in metres or feet (e.g. UTM) first, "
+                "e.g. with PDAL or LAStools."
+            )
+        xyz = np.concatenate(xyz_parts) if xyz_parts else np.empty((0, 3))
+        cls = np.concatenate(cls_parts) if cls_parts else np.empty(0, dtype=np.uint8)
+        if bbox is not None:
+            logger.info(f"{path.name}: crop kept {len(xyz):,} of {total:,} points")
+        finite = np.all(np.isfinite(xyz), axis=1)
+        return PointCloudData(
+            xyz=_clean(xyz, path),
+            classification=cls[finite] if cls.any() else None,  # all-zero = never classified
+            units=info.units,
+            z_units=info.z_units,
+            crs=info.crs,
+            crs_wkt=info.wkt,
+            cropped=bbox is not None,
+        )
 
 
 @register_reader

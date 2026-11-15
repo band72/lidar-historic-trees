@@ -347,50 +347,82 @@ def _parse_kv(items: list[str] | None, what: str) -> dict[str, dict[str, str]]:
 
 @cli.command()
 def inventory(
-    input_fp: Annotated[Path, typer.Argument(metavar="INPUT", exists=True, help="Point cloud file (.ply .pcd .las .laz .npy .txt .csv), ROS bag file or ROS2 bag directory.")],
-    output_dir: Annotated[Path, typer.Option("--output", "-o", file_okay=False, help="Output directory for exports and the log file.")] = Path("fip_output"),
-    config_fp: Annotated[Optional[Path], typer.Option("--config", "-c", exists=True, dir_okay=False, help="YAML/JSON with sections ground, segment, fit (keys = parameter names).")] = None,
-    export: Annotated[list[str], typer.Option("--export", "-e", help="Exporter(s) to run; repeatable. See `fip plugins`.")] = ["csv", "dxf"],
+    inputs: Annotated[list[Path], typer.Argument(metavar="INPUT...", exists=True, help="Point cloud file(s) (.las .laz .ply .pcd .npy .txt .csv ...), a folder of tiles, a ROS bag file or ROS2 bag folder. Several inputs are merged.")],
+    output_dir: Annotated[Path, typer.Option("--output", "-o", file_okay=False, help="Output directory for exports, run.json and the log file.")] = Path("fip_output"),
+    config_fp: Annotated[Optional[Path], typer.Option("--config", "-c", exists=True, dir_okay=False, help="YAML/JSON with sections ground, segment, fit (keys = parameter names, metres).")] = None,
+    export: Annotated[list[str], typer.Option("--export", "-e", help="Exporter(s) to run; repeatable: csv, dxf, geojson, points, ... (see `fip plugins`).")] = ["csv", "dxf"],
     export_option: Annotated[Optional[list[str]], typer.Option("--export-option", "-E", help="Exporter option name.key=value, e.g. dxf.z_mode=plan. Repeatable.")] = None,
     reader: Annotated[Optional[str], typer.Option("--reader", help="Force a reader by name (default: by file extension).")] = None,
     reader_option: Annotated[Optional[list[str]], typer.Option("--reader-option", "-R", help="Reader option key=value, e.g. topic=/cloud_registered. Repeatable.")] = None,
     plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s) to load.")] = None,
-    units: Annotated[str, typer.Option("--units", "-u", help="Length unit of the input cloud: m, ft (international) or us_ft (US survey). Also the unit of --breast-height and --model-sd.")] = "m",
-    output_units: Annotated[Optional[str], typer.Option("--output-units", help="Length unit of the exports: m, ft or us_ft (default: same as --units).")] = None,
-    breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height, in --units (default 1.3 m; 4.5 ft when --units is feet).")] = None,
+    units: Annotated[str, typer.Option("--units", "-u", help="Length unit of the input: auto (from the LAS header, else m), m, ft or us_ft. Also the unit of --breast-height, --model-sd and --crop.")] = "auto",
+    output_units: Annotated[Optional[str], typer.Option("--output-units", help="Length unit of the exports: m, ft or us_ft (default: the input's unit).")] = None,
+    crop: Annotated[Optional[str], typer.Option("--crop", help="Only process points inside xmin,ymin,xmax,ymax (input coordinates). LAS is cropped while reading.")] = None,
+    ground_source: Annotated[Optional[str], typer.Option("--ground-source", help="auto (use the file's ground classification if present), csf or classification.")] = None,
+    crs: Annotated[Optional[str], typer.Option("--crs", help="Coordinate system to record in the outputs, e.g. EPSG:25832 (overrides the file header).")] = None,
+    keep_noise: Annotated[bool, typer.Option("--keep-noise", help="Keep points classified as noise (ASPRS 7/18).")] = False,
+    breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height, in the input unit (default 1.3 m; 4.5 ft for feet).")] = None,
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
-    model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in --units; calibrate with `fip calibrate`.")] = None,
+    model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in the input unit; calibrate with `fip calibrate`.")] = None,
     log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
 ):
     """
-    Full inventory: ground segmentation, height normalization, tree segmentation,
-    breast-height DBH with confidence intervals, metric plugins and exports (CSV, DXF, ...).
+    Full inventory: read, ground, height normalization, tree segmentation, breast-height DBH
+    with confidence intervals, metric plugins, exports (CSV, DXF, ...) and run.json.
     """
     import sys
     from .errors import FIPError
     from . import inventory as inv
-    from .plugins import load_plugins
+    from .plugins import load_plugins, registry
     from .traits.dbh.robust_fit import FitParams
+    from .units import US_BREAST_HEIGHT_M, is_feet, normalize_unit, to_metres
 
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "fip.log"
     logger.configure(level=log_level, log_file=log_file)
-    logger.info(f"fip inventory {input_fp} -> {output_dir} (log: {log_file})")
+    logger.info(f"fip inventory {' '.join(map(str, inputs))} -> {output_dir} (log: {log_file})")
     try:
         load_plugins(extra_dirs=plugin_dir or [])
         config: dict = load_yaml_or_json(config_fp) if config_fp else {}  # type: ignore
         unknown = set(config) - {"ground", "segment", "fit"}
         if unknown:
             raise typer.BadParameter(f"unknown config section(s) {sorted(unknown)}; expected ground, segment, fit")
-        fit_cfg = dict(config.get("fit", {}))
-        from .units import US_BREAST_HEIGHT_M, is_feet, normalize_unit, to_metres
-
         try:
-            in_unit = normalize_unit(units)
-            out_unit = normalize_unit(output_units) if output_units else in_unit
+            req_unit = "auto" if units == "auto" else normalize_unit(units)
+            out_unit_opt = normalize_unit(output_units) if output_units else None
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
+        ground_cfg = dict(config.get("ground", {}))
+        if ground_source:
+            ground_cfg["source"] = ground_source
+        fit_cfg = dict(config.get("fit", {}))
+        for key, val in dict(confidence=confidence, ci_method=ci_method).items():
+            if val is not None:
+                fit_cfg[key] = val
+        try:
+            gp = inv.GroundParams(**ground_cfg)
+            sp = inv.SegmentParams(**config.get("segment", {}))
+            FitParams(**fit_cfg)  # validate now; unit-dependent values are set after reading
+        except TypeError as exc:
+            raise typer.BadParameter(f"bad config key: {exc}") from exc
+        # validate exporters and their options before any heavy processing
+        export_opts = _parse_kv(export_option, "export")
+        for name in set(export) | set(export_opts):
+            registry.exporter(name).resolve_options(export_opts.get(name, {}))
+        stray = set(export_opts) - set(export)
+        if stray:
+            logger.warning(f"options given for exporter(s) {sorted(stray)} that are not in --export; ignored")
+        reader_opts = {}
+        for item in reader_option or []:
+            if "=" not in item:
+                raise typer.BadParameter(f"reader option must be key=value, got {item!r}")
+            k, v = item.split("=", 1)
+            reader_opts[k] = v
+
+        cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, crop=crop, keep_noise=keep_noise, **reader_opts)
+        in_unit = cloud.units
+        out_unit = out_unit_opt or in_unit
         if breast_height is not None:
             fit_cfg["breast_height"] = float(to_metres(breast_height, in_unit))
         elif is_feet(in_unit) and "breast_height" not in fit_cfg:
@@ -398,43 +430,22 @@ def inventory(
             logger.info("units are feet: using the US breast height of 4.5 ft (1.3716 m)")
         if model_sd is not None:
             fit_cfg["model_sd"] = float(to_metres(model_sd, in_unit))
-        for key, val in dict(confidence=confidence, ci_method=ci_method).items():
-            if val is not None:
-                fit_cfg[key] = val
-        try:
-            gp = inv.GroundParams(**config.get("ground", {}))
-            sp = inv.SegmentParams(**config.get("segment", {}))
-            fp = FitParams(**fit_cfg)
-        except TypeError as exc:
-            raise typer.BadParameter(f"bad config key: {exc}") from exc
+        fp = FitParams(**fit_cfg)
         for issue in inv.check_band_inside_slice(fp, sp):
             logger.warning(issue)
-        # validate exporters and their options before any heavy processing
-        from .plugins import registry
 
-        export_opts = _parse_kv(export_option, "export")
-        for name in set(export) | set(export_opts):
-            exp = registry.exporter(name)
-            exp.resolve_options(export_opts.get(name, {}))
-        stray = set(export_opts) - set(export)
-        if stray:
-            logger.warning(f"options given for exporter(s) {sorted(stray)} that are not in --export; ignored")
-
-        reader_opts = {}
-        for item in reader_option or []:
-            if "=" not in item:
-                raise typer.BadParameter(f"reader option must be key=value, got {item!r}")
-            k, v = item.split("=", 1)
-            reader_opts[k] = v
-        xyz = inv.load_points(input_fp, reader=reader, units=in_unit, **reader_opts)
-        ground, non_ground = inv.segment_ground(xyz, gp)
+        ground, non_ground = inv.segment_ground(cloud.xyz, gp, cloud.classification)
         normalized = inv.normalize_heights(ground, non_ground, gp)
         pts, labels = inv.segment_trees(normalized, sp)
         trees = inv.group_trees(pts, labels, sp.min_tree_points)
         if not trees:
             raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
-        records = inv.fit_trees(trees, ground, fp, gp, keep_points=False)
-        ctx = inv.context_for(str(input_fp), fp, units=out_unit, ground=gp, segment=sp)
+        records = inv.fit_trees(trees, ground, fp, gp, keep_points="points" in export)
+        ctx = inv.context_for(
+            "; ".join(cloud.sources), fp, units=out_unit,
+            crs=crs or cloud.crs, crs_wkt=None if crs and crs != cloud.crs else cloud.crs_wkt,
+            ground=gp, segment=sp, input_units=in_unit,
+        )
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
         logger.info(
@@ -630,10 +641,13 @@ def self_test(
 
     def exports_ok():
         with tempfile.TemporaryDirectory() as td:
-            out = inv.export_records(state["records"], Path(td), ["csv", "dxf"], inv.context_for("self-test", state["fp"]))
-            if len(out) != 2 or not all(p.stat().st_size > 0 for p in out):
-                raise RuntimeError(f"exports incomplete: {out}")
-        return "csv, dxf"
+            fmts = ["csv", "dxf", "geojson", "points"]
+            out = inv.export_records(state["records"], Path(td), fmts, inv.context_for("self-test", state["fp"]))
+            names = {p.name for p in out}
+            expected = {"trees.csv", "trees.dxf", "trees.geojson", "trees.laz", "run.json"}
+            if names != expected or not all(p.stat().st_size > 0 for p in out):
+                raise RuntimeError(f"exports incomplete: got {sorted(names)}, expected {sorted(expected)}")
+        return ", ".join(fmts) + ", run.json"
 
     def app_ok():
         from streamlit.testing.v1 import AppTest

@@ -58,5 +58,5 @@ jobs:
         run: |
           cd "$RUNNER_TEMP"
           fip demo-data demo/plot.ply --n-trees 10
-          fip inventory demo/plot.ply -o out --plugin-dir "$GITHUB_WORKSPACE/plugins" -e csv -e dxf -e geojson
-          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson
+          fip inventory demo/plot.ply -o out --plugin-dir "$GITHUB_WORKSPACE/plugins" -e csv -e dxf -e geojson -e points
+          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson && test -s out/trees.laz && test -s out/run.json

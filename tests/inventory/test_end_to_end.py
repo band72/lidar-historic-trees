@@ -60,7 +60,7 @@ def test_exports_and_calibration(run, tmp_path):
     plot, records, fp = run
     ctx = inv.context_for("synthetic", fp)
     written = inv.export_records(records, tmp_path, ["csv", "dxf"], ctx)
-    assert {p.suffix for p in written} == {".csv", ".dxf"}
+    assert {p.name for p in written} == {"trees.csv", "trees.dxf", "run.json"}
     ref = np.array([[t["x"], t["y"], t["dbh"]] for t in plot.truth])
     res = calibrate(records, ref, fp.model_sd)
     assert res.n_matched >= 14

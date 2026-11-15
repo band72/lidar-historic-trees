@@ -72,8 +72,8 @@ jobs:
           "$FIP" self-test
           mkdir -p smoke && cd smoke
           "../$FIP" demo-data plot.ply --n-trees 10
-          "../$FIP" inventory plot.ply -o out --plugin-dir ../dist/lidar-tree-inventory/_internal/plugins -e csv -e dxf -e geojson
-          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson
+          "../$FIP" inventory plot.ply -o out --plugin-dir ../dist/lidar-tree-inventory/_internal/plugins -e csv -e dxf -e geojson -e points
+          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson && test -s out/trees.laz && test -s out/run.json
 
       - name: Package (Linux .tar.gz with installer)
         if: matrix.os == 'linux'
