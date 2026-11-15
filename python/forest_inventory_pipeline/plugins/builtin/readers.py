@@ -485,7 +485,10 @@ class RosbagReader(Reader):
                 frame = msg.header.frame_id.lstrip("/")
                 frames.add(frame)
                 xyz = pointcloud2_to_xyz(msg)
-                xyz = xyz[np.all(np.isfinite(xyz), axis=1)]
+                # no-return pixels: NaN (Velodyne, many drivers) or exactly (0, 0, 0) (Ouster).
+                # Drop both before any transform, or the zeros of each registered scan would
+                # land on the scanner's own position and trace its path as fake points.
+                xyz = xyz[np.all(np.isfinite(xyz), axis=1) & np.any(xyz != 0.0, axis=1)]
                 if opts["min_range"] > 0 or opts["max_range"] > 0:
                     rng = np.linalg.norm(xyz, axis=1)
                     keep = rng >= opts["min_range"]
