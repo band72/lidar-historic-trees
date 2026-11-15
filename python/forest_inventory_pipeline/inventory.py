@@ -184,6 +184,17 @@ def expand_inputs(paths: str | Path | Sequence[str | Path]) -> list[Path]:
         if p.is_dir() and not (p / "metadata.yaml").exists():
             supported = {e for r in registry.readers.values() for e in r.extensions if e != "/"}
             found = sorted(f for f in p.iterdir() if f.is_file() and f.suffix.lower() in supported)
+            # .txt/.csv/.asc are generic: a folder usually also holds results tables
+            # (trees.csv) or notes, which must not be read as points. Use them only
+            # when the folder has no real point cloud files.
+            generic = {".txt", ".csv", ".asc"}
+            cloud_files = [f for f in found if f.suffix.lower() not in generic]
+            if cloud_files and len(cloud_files) < len(found):
+                skipped = [f.name for f in found if f.suffix.lower() in generic]
+                logger.info(
+                    f"{p}: ignoring text/CSV files in a folder with point clouds: {skipped}"
+                )
+                found = cloud_files
             if not found:
                 raise InputDataError(
                     f"{p}: folder has no supported point cloud files ({sorted(supported)})"
@@ -256,6 +267,14 @@ def load_cloud(
 
     # units: explicit beats header; tiles must agree
     declared = {d.units for _, d in parts if d.units}
+    silent = [pth.name for pth, d in parts if not d.units]
+    if declared and silent and requested == "auto":
+        # applying one file's units to a file that declares none would silently corrupt it
+        raise InputDataError(
+            f"{len(parts) - len(silent)} file(s) declare units ({', '.join(sorted(declared))}) but "
+            f"{', '.join(silent[:3])}{'...' if len(silent) > 3 else ''} declare none; "
+            "set the units explicitly (--units m|ft|us_ft) if they are all in the same unit"
+        )
     if len(declared) > 1:
         raise InputDataError(
             f"input files declare different units {sorted(declared)}; process them separately"

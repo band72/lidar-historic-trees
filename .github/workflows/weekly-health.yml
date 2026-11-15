@@ -1,0 +1,55 @@
+name: Weekly health check
+
+# Catches breakage from new releases of Open3D, NumPy, Streamlit, laspy, ... (dependencies are
+# unpinned) and newly published vulnerabilities, without waiting for the next push.
+# Runs Monday 11:00 UTC (06:00 US Eastern standard time, 07:00 daylight time).
+# GitHub emails the repository owner when a scheduled run fails.
+# Note: GitHub pauses scheduled workflows after 60 days without repository activity.
+on:
+  schedule:
+    - cron: "0 11 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: System libraries for Open3D
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgomp1
+
+      - name: Install the latest dependency versions
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test,app,las]" rosbags pip-audit
+          {
+            echo "### Installed versions"
+            pip freeze | grep -iE "^(open3d|numpy|scipy|scikit-learn|streamlit|plotly|laspy|ezdxf|rosbags|typer|pandas|cloth)" | sed 's/^/- /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tests
+        env:
+          LOG_LEVEL: warn
+        run: python -m pytest -q tests -p no:cacheprovider
+
+      - name: Accuracy benchmark (analytic and bootstrap)
+        env:
+          LOG_LEVEL: warn
+        run: |
+          for m in analytic bootstrap; do
+            python scripts/evaluation/benchmark_synthetic.py --method $m | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Known vulnerabilities in dependencies
+        run: |
+          echo "### pip-audit" >> "$GITHUB_STEP_SUMMARY"
+          pip-audit --desc 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"

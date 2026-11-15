@@ -530,8 +530,9 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 90 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 92 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
+python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```
 
 | Folder | Contents |
@@ -544,7 +545,7 @@ ruff check python tests
 | `tests/` | pytest suite |
 | `.claude/agents/` | Claude Code subagents for testing, measurement review, plugin building and data inspection |
 
-**CI**: every push runs the tests on Python 3.10 and 3.12. **Releases**: pushing a `vX.Y.Z` tag builds both installers on GitHub Actions, tests them (test suite, frozen self-test, a silent install and uninstall), and publishes a GitHub Release with checksums.
+**CI**: every push runs the tests on Python 3.10 and 3.12. A **weekly health check** (Mondays) reruns the tests and the accuracy benchmark with the latest dependency versions and audits them for known vulnerabilities. **Releases**: pushing a `vX.Y.Z` tag builds both installers on GitHub Actions, tests them (test suite, frozen self-test, a silent install and uninstall), and publishes a GitHub Release with checksums.
 
 ---
 

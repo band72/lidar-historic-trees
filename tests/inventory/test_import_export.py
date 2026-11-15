@@ -213,3 +213,25 @@ def test_run_metadata_and_prj(tmp_path, fitted):
     assert {o["file"] for o in meta["outputs"]} == {"trees.csv", "trees.geojson", "trees.prj"}
     assert all(len(o["sha256"]) == 64 for o in meta["outputs"])
     assert "Florida" in (tmp_path / "trees.prj").read_text()
+
+
+def test_folder_ignores_results_csv(tmp_path, plot):
+    write_las(tmp_path / "a.las", plot.points)
+    (tmp_path / "trees.csv").write_text("tree_id,status,x,y\n1,ok,3.0,4.0\n")
+    (tmp_path / "notes.txt").write_text("plot 7, surveyed in May\n")
+    cloud = inv.load_cloud(tmp_path)
+    assert [p.split("/")[-1] for p in cloud.sources] == ["a.las"]
+    # a folder holding only text files still works
+    only_text = tmp_path / "txt"
+    only_text.mkdir()
+    np.savetxt(only_text / "p.txt", plot.points[:2000])
+    assert len(inv.load_cloud(only_text).xyz) == 2000
+
+
+def test_partially_declared_units_are_refused(tmp_path, plot):
+    write_las(tmp_path / "a.las", plot.points / US_FT, wkt=WKT_SPCS_USFT)
+    write_las(tmp_path / "b.las", plot.points)  # declares nothing
+    with pytest.raises(InputDataError, match="declare none"):
+        inv.load_cloud(tmp_path)
+    ok = inv.load_cloud(tmp_path, units="us_ft")  # explicit units resolve it
+    assert ok.units == "us_ft"

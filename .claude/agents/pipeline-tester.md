@@ -16,30 +16,7 @@ You verify the forest inventory pipeline in this repository. You do not edit sou
 
 1. **Unit + integration tests**: `LOG_LEVEL=warn .venv/bin/python -m pytest -q tests -p no:cacheprovider`. Report counts; for failures, show the assertion and the relevant source lines.
 2. **Lint new code**: `.venv/bin/ruff check python tests --output-format concise`. The F401 re-export warnings in package `__init__.py` files, `cloud.py` and `traits/dbh/dbh.py` are pre-existing; report only new findings.
-3. **Accuracy benchmark** (3 synthetic plots, seeds 0-2, 20 trees each), for both `ci_method=analytic` and `bootstrap`:
-   ```python
-   import numpy as np, io, contextlib, sys
-   from forest_inventory_pipeline import synthetic, inventory as inv
-   from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams
-   method = sys.argv[1]
-   errs, cov, n, gz = [], 0, 0, []
-   for seed in range(3):
-       plot = synthetic.make_plot(n_trees=20, seed=seed)
-       gp, sp, fp = inv.GroundParams(), inv.SegmentParams(), FitParams(ci_method=method)
-       with contextlib.redirect_stdout(io.StringIO()):
-           g, ng = inv.segment_ground(plot.points, gp)
-           nz = inv.normalize_heights(g, ng, gp)
-           pts, lab = inv.segment_trees(nz, sp)
-       recs = inv.fit_trees(inv.group_trees(pts, lab, 50), g, fp)
-       T = np.array([[t["x"], t["y"], t["dbh"], t["ground_z"]] for t in plot.truth])
-       for r in recs:
-           if not r.fitted: continue
-           d = np.hypot(T[:, 0] - r.x, T[:, 1] - r.y); j = d.argmin()
-           if d[j] > 0.5: continue
-           n += 1; errs.append(r.dbh - T[j, 2]); cov += r.ci_low <= T[j, 2] <= r.ci_high; gz.append(r.ground_z - T[j, 3])
-   e = np.array(errs)
-   print(f"{method}: matched {n}/60 RMSE={np.sqrt(np.mean(e**2))*100:.2f}cm bias={e.mean()*100:+.2f}cm coverage={cov}/{n} ground_z_median={np.median(gz):+.3f}m")
-   ```
+3. **Accuracy benchmark**: `LOG_LEVEL=warn .venv/bin/python scripts/evaluation/benchmark_synthetic.py --method analytic` and again with `--method bootstrap`. It prints the metrics and exits 1 on a regression (thresholds are in the script).
 4. **CLI smoke test** in the scratchpad: `fip demo-data <dir>/plot.ply --n-trees 15`, then `fip inventory <dir>/plot.ply -o <dir>/out`; confirm exit code 0, `trees.csv` and `trees.dxf` exist, and the DXF audits clean (`ezdxf.readfile(...).audit().errors == []`).
 
 ## Baseline (2026-11-14, defaults, with multi-stem split)
