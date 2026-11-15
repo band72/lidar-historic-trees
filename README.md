@@ -407,7 +407,7 @@ The `rosbag` reader collects `sensor_msgs/PointCloud2` messages from one topic. 
 |---|---|
 | A registered/mapped cloud topic (e.g. `/cloud_registered` from FAST-LIO, a `/map` topic) | `-R topic=/cloud_registered` |
 | Raw scans in the sensor frame, **plus** `/tf` from SLAM/odometry | `-R topic=/os_cloud_node/points -R target_frame=map`. Each scan is transformed with the pose at its timestamp |
-| Raw scans with no poses | Run SLAM first (e.g. FAST-LIO, KISS-ICP) and record the registered cloud. Stacking raw scans without poses smears the trees, so the reader refuses with an explanation |
+| Raw scans with no poses (or only GNSS/INS, which is usually too coarse for DBH) | Register them with lidar odometry first. The included script does this with KISS-ICP: `pip install kiss-icp`, then `python scripts/register_rosbag_kiss_icp.py run.bag --topic /os_cloud_node/points --start 0 --duration 120 -o segment.laz`, then `fip inventory segment.laz`. It removes motion blur using per-point times, drops no-return pixels and levels the cloud with the lidar's IMU. Coordinates are local (origin at the first scan); keep segments to a few minutes, since odometry drifts slowly. Stacking raw scans without poses smears the trees, so the reader refuses with an explanation |
 | A static scanner | `-R allow_sensor_frame=true` |
 
 Other rosbag options:
