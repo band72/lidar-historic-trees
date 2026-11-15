@@ -1,0 +1,54 @@
+{
+  "description": "Site location of the 2022-03-08 field recording, from the bag's /gnss1/fix (sensor_msgs/NavSatFix).",
+  "crs": "EPSG:4326 (WGS84 latitude/longitude, decimal degrees)",
+  "gnss": {
+    "rtk": false,
+    "note": "GNSS RTK was not in use on this rural site: standalone fixes (NavSatFix status 0, unaugmented).",
+    "reported_horizontal_sd_m_median": 0.96,
+    "altitude_m_median": -14.2,
+    "altitude_note": "As recorded; most likely height above the WGS84 ellipsoid, not above sea level (sea level is roughly 29 m below the ellipsoid here, so about +15 m above sea level; not verified)."
+  },
+  "processed_segment_first_120_s": {
+    "centre": {
+      "lat": 30.081775,
+      "lon": -83.094395
+    },
+    "start": {
+      "lat": 30.081531,
+      "lon": -83.09438
+    },
+    "end": {
+      "lat": 30.082648,
+      "lon": -83.094319
+    },
+    "extent": {
+      "lat_min": 30.081515,
+      "lat_max": 30.082648,
+      "lon_min": -83.094732,
+      "lon_max": -83.094179
+    },
+    "n_fixes": 240
+  },
+  "whole_route_684_s": {
+    "centre": {
+      "lat": 30.08446,
+      "lon": -83.095278
+    },
+    "start": {
+      "lat": 30.081531,
+      "lon": -83.09438
+    },
+    "end": {
+      "lat": 30.081485,
+      "lon": -83.094298
+    },
+    "extent": {
+      "lat_min": 30.08148,
+      "lat_max": 30.087935,
+      "lon_min": -83.096426,
+      "lon_max": -83.094179
+    },
+    "n_fixes": 1369
+  },
+  "local_frame_note": "trees.csv and trajectory.csv are in local metres (KISS-ICP, origin at the first scan), not georeferenced."
+}

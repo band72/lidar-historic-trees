@@ -9,12 +9,31 @@
 - **Segment:** the first 120 s, 1,198 scans along 215 m of route. It was stitched with `scripts/register_rosbag_kiss_icp.py` (KISS-ICP 1.3.0, motion correction from per-point times, levelled with the lidar IMU) into 45 M points at 1 cm, in local metres with the origin at the first scan. The INS distance over the same time is about 222 m (+3 %).
 - **The scene:** mostly open ground with fences and buildings. The forest is an edge 15-25 m to one side, seen from one side only.
 
+## Site location
+
+A rural site in north Florida. Coordinates are WGS84 latitude/longitude in decimal degrees, from the bag's GNSS (`/gnss1/fix`). They are also in [`site_location.json`](site_location.json).
+
+| | Latitude | Longitude |
+|---|---|---|
+| **Processed segment (first 120 s), centre** | **30.081775** | **-83.094395** |
+| Recording start | 30.081531 | -83.094380 |
+| Processed segment, end | 30.082648 | -83.094319 |
+| Whole route (684 s), centre | 30.084460 | -83.095278 |
+| Whole route, extent | 30.081480 to 30.087935 | -83.096426 to -83.094179 |
+
+The whole route covers about 720 m north-south by 220 m east-west, and starts and ends at nearly the same spot.
+
+**GNSS RTK was not in use on this rural site.** These are standalone, uncorrected fixes. The receiver reports a horizontal uncertainty of about ±1 m (median 0.96 m), which is good enough to locate the site and the route, but not individual trees to centimetre level. The recorded altitude (about -14 m) is most likely height above the WGS84 ellipsoid rather than above sea level. Sea level there is roughly 29 m below the ellipsoid, which would put the ground at about +15 m; this has not been verified.
+
+The tree table (`trees.csv`) and `trajectory.csv` are in local metres from the stitching (origin at the first scan), not latitude/longitude. Fitting the stitched trajectory to the GNSS track could convert them, with about 1 m accuracy.
+
 ## Files
 
 | File | Content |
 |---|---|
 | `trees.csv` | The `fip inventory` table for the segment (default settings, trunk check on), including the rejected clusters with their reasons |
 | `run.json` | Run record: parameters, summary, output checksums. It reports version "0.1.0" because the development install's version metadata was stale; the code was the development version between 0.1.3 and 0.1.4 |
+| `site_location.json` | Site and route coordinates (WGS84), GNSS quality and the no-RTK note |
 | `trajectory.csv` | Vehicle path from KISS-ICP (time, x, y, z in local metres) |
 | `before_trunk_check_*.png` | The same segment before the trunk check: 227 clusters were measured, most of them shrubs, posts, walls and scatter |
 | `dxf_before_trunk_check.png`, `dxf_after_trunk_check.png` | This segment's `trees.dxf` from both runs, rendered from the files with ezdxf (227 and 14 DBH circles) |

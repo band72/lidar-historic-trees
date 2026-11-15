@@ -562,7 +562,7 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 ### Tested on real data
 
-The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
+The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) recorded at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
 
 - Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. With it, 14 remain, and the clear trunks among them have crisp single rings at breast height. Four of the 14 are posts holding a roof, which no geometric trunk check can tell from small trunks.
 - The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
