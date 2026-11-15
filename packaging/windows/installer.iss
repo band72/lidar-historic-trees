@@ -30,8 +30,12 @@ OutputDir=..\..\dist
 OutputBaseFilename=LiDAR-Tree-Inventory-{#AppVersion}-windows-x64-setup
 SetupIconFile=..\assets\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
-Compression=lzma2/ultra64
+; lzma2/ultra64 ran out of memory on the ~800 MB bundle (ISCC is 32-bit); compress in a
+; separate 64-bit process with a 64 MB dictionary instead
+Compression=lzma2/max
 SolidCompression=yes
+LZMAUseSeparateProcess=yes
+LZMADictionarySize=65536
 LZMANumBlockThreads=4
 WizardStyle=modern
 ChangesEnvironment=yes
