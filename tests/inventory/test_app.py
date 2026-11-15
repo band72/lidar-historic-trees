@@ -39,3 +39,15 @@ def test_demo_run_and_live_slider(app):
 
 def test_prompt_before_first_run(app):
     assert any("Run segmentation" in i.value for i in app.info)
+
+
+def test_feet_display(app):
+    app.sidebar.number_input[0].set_value(8)
+    app.button[0].click().run()
+    units = next(s for s in app.sidebar.button_group if s.label == "Display & export units")
+    units.set_value("ft").run()
+    assert not app.exception and not app.error
+    assert metric(app, "Mean DBH").value.endswith(" in")
+    assert metric(app, "Basal area").value.endswith("ft²/ac")
+    bh = next(s for s in app.sidebar.slider if s.label.startswith("Breast height"))
+    assert bh.label == "Breast height (ft)" and bh.value == 4.5

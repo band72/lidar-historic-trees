@@ -147,7 +147,17 @@ def check_band_inside_slice(fit: FitParams, seg: SegmentParams) -> list[str]:
 # --------------------------------------------------------------------------- stages
 
 
-def load_points(path: str | Path, reader: str | None = None, **reader_options) -> np.ndarray:
+def load_points(
+    path: str | Path, reader: str | None = None, units: str = "m", **reader_options
+) -> np.ndarray:
+    """
+    Read a point cloud and return it in metres.
+
+    :param units: length unit of the file's coordinates: m, ft or us_ft.
+    """
+    from .units import METRES_PER_UNIT, guess_unit_hint, normalize_unit
+
+    units = normalize_unit(units)
     path = Path(path).expanduser()
     if not path.exists():
         raise InputDataError(f"input not found: {path}")
@@ -163,6 +173,13 @@ def load_points(path: str | Path, reader: str | None = None, **reader_options) -
         raise InputDataError(
             f"reader '{rdr.name}' failed on {path.name}: {type(exc).__name__}: {exc}"
         ) from exc
+    if units != "m":
+        xyz = xyz * METRES_PER_UNIT[units]
+        logger.info(f"converted coordinates from {units} to metres")
+    else:
+        hint = guess_unit_hint(xyz)
+        if hint:
+            logger.warning(f"{path.name}: {hint}")
     _validate_points(xyz, path.name)
     extent = xyz.max(axis=0) - xyz.min(axis=0)
     logger.info(
@@ -188,7 +205,8 @@ def _validate_points(xyz: np.ndarray, name: str) -> None:
         )
     if np.max(extent) > 5000:
         logger.warning(
-            f"{name}: extent {np.max(extent):.0f} units - is the cloud in metres? Parameters assume metres."
+            f"{name}: extent {np.max(extent):.0f} units - is the cloud in metres? Parameters assume "
+            "metres; for feet use units=ft (CLI: --units ft)."
         )
 
 
@@ -611,9 +629,12 @@ def export_records(
     return written
 
 
-def context_for(source: str, fit: FitParams, **params) -> ExportContext:
+def context_for(source: str, fit: FitParams, units: str = "m", **params) -> ExportContext:
+    from .units import normalize_unit
+
     return ExportContext(
         source=source,
+        units=normalize_unit(units),
         breast_height=fit.breast_height,
         confidence=fit.confidence,
         parameters={

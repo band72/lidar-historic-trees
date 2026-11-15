@@ -32,7 +32,15 @@ from forest_inventory_pipeline.plugins import load_plugins, registry
 from forest_inventory_pipeline.records import STATUS_FAILED, STATUS_OK, STATUS_WARNING
 from forest_inventory_pipeline.synthetic import make_plot
 from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams, band_points, residuals
+from forest_inventory_pipeline.units import (
+    LABELS,
+    from_metres,
+    is_feet,
+    normalize_unit,
+    to_metres,
+)
 from forest_inventory_pipeline.utils import logger
+
 
 def _log_dir() -> Path:
     """Per-user log folder for installed (frozen) builds; ./fip_output when run from source."""
@@ -59,6 +67,30 @@ STATUS_STYLE = {
     STATUS_WARNING: dict(color="#fab219", symbol="triangle-up", label="⚠ warning"),
     STATUS_FAILED: dict(color="#d03b3b", symbol="x", label="✖ failed"),
 }
+
+
+class DisplayUnits:
+    """Converts internal metres to the unit chosen for display and export."""
+
+    def __init__(self, unit: str = "m"):
+        self.unit = normalize_unit(unit)
+        self.feet = is_feet(self.unit)
+        self.ul = "ft" if self.feet else "m"  # length label
+        self.dl = "in" if self.feet else "cm"  # diameter label
+        self.al = "ft²/ac" if self.feet else "m²/ha"  # basal area per area label
+
+    def L(self, v):
+        return from_metres(v, self.unit)
+
+    def D(self, v_m):
+        return v_m / 0.0254 if self.feet else v_m * 100.0
+
+    def BA(self, m2_per_ha: float) -> float:
+        return m2_per_ha * 4.356 if self.feet else m2_per_ha  # 1 m²/ha = 4.356 ft²/acre
+
+
+U = DisplayUnits("m")  # replaced in main() from the sidebar choice
+
 SERIES_ESTIMATE = "#2a78d6"  # categorical slot 1
 SERIES_TRUTH = "#eb6834"  # categorical slot 2
 
@@ -91,7 +123,13 @@ def _fail(stage: str, exc: Exception) -> None:
 
 @st.cache_data(show_spinner=False, max_entries=4)
 def load_source(
-    kind: str, key: str, path: str, reader_opts: tuple, demo: tuple, _upload: bytes | None
+    kind: str,
+    key: str,
+    path: str,
+    reader_opts: tuple,
+    demo: tuple,
+    _upload: bytes | None,
+    units: str = "m",
 ):
     """Return (points, truth or None). ``key`` identifies the source for caching."""
     if kind == "demo":
@@ -104,10 +142,10 @@ def load_source(
             fh.write(_upload)
             tmp = fh.name
         try:
-            return inv.load_points(tmp, **dict(reader_opts)), None
+            return inv.load_points(tmp, units=units, **dict(reader_opts)), None
         finally:
             Path(tmp).unlink(missing_ok=True)
-    return inv.load_points(path, **dict(reader_opts)), None
+    return inv.load_points(path, units=units, **dict(reader_opts)), None
 
 
 def run_segmentation(
@@ -226,7 +264,39 @@ def sidebar_source():
             key = f"upload:{f.name}:{hashlib.sha1(upload).hexdigest()}"
         else:
             key = "upload:none"
-    return kind, key, path, upload, demo, reader_opts
+    units = "m"
+    if kind != "demo":
+        units = st.sidebar.selectbox(
+            "Point cloud units",
+            ["m", "ft", "us_ft"],
+            format_func=lambda u: {
+                "m": "metres",
+                "ft": "feet (international)",
+                "us_ft": "US survey feet",
+            }[u],
+            help="Units of the file's coordinates. Feet are converted to metres on reading.",
+        )
+        key += f":{units}"
+    return kind, key, path, upload, demo, reader_opts, units
+
+
+def sidebar_units(cloud_units: str) -> DisplayUnits:
+    choice = (
+        st.sidebar.segmented_control(
+            "Display & export units",
+            ["auto", "m", "ft", "us_ft"],
+            default="auto",
+            format_func=lambda u: {
+                "auto": "same as cloud",
+                "m": "m / cm",
+                "ft": "ft / in",
+                "us_ft": "US ft / in",
+            }[u],
+            help="Lengths in tables, charts and exports. DBH is shown in cm (metric) or inches (feet).",
+        )
+        or "auto"
+    )
+    return DisplayUnits(cloud_units if choice == "auto" else choice)
 
 
 def sidebar_segmentation():
@@ -287,22 +357,50 @@ def sidebar_segmentation():
 def sidebar_fit() -> FitParams | None:
     st.sidebar.header("3 · Fit stems (live)")
     s = st.sidebar
-    bh = s.slider(
-        "Breast height (m)",
-        1.0,
-        2.0,
-        1.3,
-        0.05,
-        help="1.3 m in most of the world; 1.37 m (4.5 ft) in the US.",
-    )
-    hw = s.slider(
-        "Band half-width (m)",
-        0.05,
-        0.6,
-        0.25,
-        0.01,
-        help="Points within breast height ± this are used.",
-    )
+    if U.feet:
+        bh = float(
+            to_metres(
+                s.slider(
+                    "Breast height (ft)",
+                    3.0,
+                    6.5,
+                    4.5,
+                    0.1,
+                    help="4.5 ft in the US; 1.3 m (4.27 ft) in most other countries.",
+                ),
+                U.unit,
+            )
+        )
+        hw = float(
+            to_metres(
+                s.slider(
+                    "Band half-width (ft)",
+                    0.2,
+                    2.0,
+                    0.8,
+                    0.05,
+                    help="Points within breast height ± this are used.",
+                ),
+                U.unit,
+            )
+        )
+    else:
+        bh = s.slider(
+            "Breast height (m)",
+            1.0,
+            2.0,
+            1.3,
+            0.05,
+            help="1.3 m in most of the world; 1.37 m (4.5 ft) in the US.",
+        )
+        hw = s.slider(
+            "Band half-width (m)",
+            0.05,
+            0.6,
+            0.25,
+            0.01,
+            help="Points within breast height ± this are used.",
+        )
     conf = s.slider("Confidence level", 0.80, 0.99, 0.95, 0.01, format="%.2f")
     method = (
         s.segmented_control(
@@ -388,7 +486,16 @@ def records_frame(records) -> pd.DataFrame:
     if df.empty:
         return df
     for c in ("dbh", "ci_low", "ci_high", "dbh_se"):
-        df[c + "_cm"] = df[c] * 100
+        df[c + "_d"] = U.D(df[c])
+    return df
+
+
+def to_display(df: pd.DataFrame) -> pd.DataFrame:
+    """Scale coordinates/elevations from metres to the display unit (after truth matching)."""
+    df = df.copy()
+    for c in ("x", "y", "ground_z", "bh_elevation", "true_ground_z"):
+        if c in df:
+            df[c] = U.L(df[c])
     return df
 
 
@@ -402,9 +509,9 @@ def match_truth(df: pd.DataFrame, truth: list[dict] | None) -> pd.DataFrame:
     j = d.argmin(1)
     ok = d[np.arange(len(df)), j] < 0.5
     df = df.copy()
-    df["true_dbh_cm"] = np.where(ok, T[j, 2] * 100, np.nan)
+    df["true_dbh_d"] = np.where(ok, U.D(T[j, 2]), np.nan)
     df["true_ground_z"] = np.where(ok, T[j, 3], np.nan)
-    df["covered"] = (df["true_dbh_cm"] >= df["ci_low_cm"]) & (df["true_dbh_cm"] <= df["ci_high_cm"])
+    df["covered"] = (df["true_dbh_d"] >= df["ci_low_d"]) & (df["true_dbh_d"] <= df["ci_high_d"])
     return df
 
 
@@ -418,23 +525,23 @@ def summary_row(df: pd.DataFrame, extent: np.ndarray, truth):
         f"{len(fitted)} / {len(df)}",
         help=f"{(df.status == STATUS_OK).sum()} ok, {(df.status == STATUS_WARNING).sum()} with warnings, {(df.status == STATUS_FAILED).sum()} failed",
     )
-    cols[1].metric("Mean DBH", f"{fitted.dbh_cm.mean():.1f} cm" if len(fitted) else "—")
+    cols[1].metric("Mean DBH", f"{fitted.dbh_d.mean():.1f} {U.dl}" if len(fitted) else "—")
     cols[2].metric(
         "Basal area",
-        f"{ba / area_ha:.1f} m²/ha",
+        f"{U.BA(ba / area_ha):.1f} {U.al}",
         help=f"{ba:.2f} m² over the {area_ha:.2f} ha bounding box",
     )
     cols[3].metric(
         "Median CI width",
-        f"±{(fitted.ci_high_cm - fitted.ci_low_cm).median() / 2:.2f} cm" if len(fitted) else "—",
+        f"±{(fitted.ci_high_d - fitted.ci_low_d).median() / 2:.2f} {U.dl}" if len(fitted) else "—",
     )
     if truth:
-        m = fitted.dropna(subset=["true_dbh_cm"])
+        m = fitted.dropna(subset=["true_dbh_d"])
         if len(m):
-            rmse = float(np.sqrt(np.mean((m.dbh_cm - m.true_dbh_cm) ** 2)))
+            rmse = float(np.sqrt(np.mean((m.dbh_d - m.true_dbh_d) ** 2)))
             cols[4].metric(
                 "vs truth",
-                f"RMSE {rmse:.2f} cm",
+                f"RMSE {rmse:.2f} {U.dl}",
                 f"CI coverage {m.covered.mean():.0%}",
                 delta_color="off",
                 help=f"{len(m)} of {len(truth)} true trees matched",
@@ -472,11 +579,11 @@ def plot_map(df: pd.DataFrame, truth):
     d["hover"] = [
         f"<b>Tree {r.tree_id}</b> · {STATUS_STYLE[r.status]['label']}<br>"
         + (
-            f"DBH {r.dbh_cm:.1f} cm [{r.ci_low_cm:.1f}–{r.ci_high_cm:.1f}]<br>"
+            f"DBH {r.dbh_d:.1f} {U.dl} [{r.ci_low_d:.1f}–{r.ci_high_d:.1f}]<br>"
             if r.status != STATUS_FAILED
             else f"{r.message}<br>"
         )
-        + f"x {r.x:.2f} · y {r.y:.2f}<br>ground {r.ground_z:.2f} m · DBH plane {r.bh_elevation:.2f} m"
+        + f"x {r.x:.2f} · y {r.y:.2f}<br>ground {r.ground_z:.2f} {U.ul} · DBH plane {r.bh_elevation:.2f} {U.ul}"
         + (f"<br>{r.message}" if r.status == STATUS_WARNING else "")
         for r in d.itertuples()
     ]
@@ -485,33 +592,33 @@ def plot_map(df: pd.DataFrame, truth):
         d,
         "x",
         "y",
-        sizes=lambda s: np.clip(np.nan_to_num(s.dbh_cm, nan=8) / 2.5, 8, 40),
+        sizes=lambda s: np.clip(np.nan_to_num(s.dbh * 40, nan=8), 8, 40),
         hover=lambda s: "%{text}<extra></extra>",
     )
     if truth:
         T = pd.DataFrame(truth)
         fig.add_trace(
             go.Scatter(
-                x=T.x,
-                y=T.y,
+                x=U.L(T.x),
+                y=U.L(T.y),
                 mode="markers",
                 name="true stem (demo)",
                 marker=dict(
                     symbol="circle-open",
-                    size=np.clip(T.dbh * 100 / 2.5, 8, 40),
+                    size=np.clip(T.dbh * 40, 8, 40),
                     color=SERIES_TRUTH,
                     line=dict(width=2),
                 ),
-                hovertemplate="true DBH %{customdata:.1f} cm<extra></extra>",
-                customdata=T.dbh * 100,
+                hovertemplate=f"true DBH %{{customdata:.1f}} {U.dl}<extra></extra>",
+                customdata=U.D(T.dbh),
             )
         )
     fig.update_layout(
         height=560,
         margin=dict(l=10, r=10, t=30, b=10),
         legend=dict(orientation="h", y=1.06),
-        xaxis_title="x (m)",
-        yaxis_title="y (m)",
+        xaxis_title=f"x ({U.ul})",
+        yaxis_title=f"y ({U.ul})",
         hovermode="closest",
         clickmode="event+select",
     )
@@ -520,7 +627,7 @@ def plot_map(df: pd.DataFrame, truth):
 
 
 def plot_dbh_ci(df: pd.DataFrame, truth):
-    d = df[df.status != STATUS_FAILED].sort_values("dbh_cm")
+    d = df[df.status != STATUS_FAILED].sort_values("dbh_d")
     d = d.assign(rank=np.arange(len(d)))
     fig = go.Figure()
     for status, style in STATUS_STYLE.items():
@@ -530,32 +637,32 @@ def plot_dbh_ci(df: pd.DataFrame, truth):
         fig.add_trace(
             go.Scatter(
                 x=sub["rank"],
-                y=sub.dbh_cm,
+                y=sub.dbh_d,
                 mode="markers",
                 name=style["label"],
                 marker=dict(color=style["color"], symbol=style["symbol"], size=9),
                 error_y=dict(
                     type="data",
                     symmetric=False,
-                    array=sub.ci_high_cm - sub.dbh_cm,
-                    arrayminus=sub.dbh_cm - sub.ci_low_cm,
+                    array=sub.ci_high_d - sub.dbh_d,
+                    arrayminus=sub.dbh_d - sub.ci_low_d,
                     thickness=2,
                     width=4,
                     color=style["color"],
                 ),
-                customdata=np.c_[sub.tree_id, sub.ci_low_cm, sub.ci_high_cm],
-                hovertemplate="Tree %{customdata[0]}<br>DBH %{y:.2f} cm<br>CI %{customdata[1]:.2f}–%{customdata[2]:.2f} cm<extra></extra>",
+                customdata=np.c_[sub.tree_id, sub.ci_low_d, sub.ci_high_d],
+                hovertemplate=f"Tree %{{customdata[0]}}<br>DBH %{{y:.2f}} {U.dl}<br>CI %{{customdata[1]:.2f}}–%{{customdata[2]:.2f}} {U.dl}<extra></extra>",
             )
         )
-    if truth and "true_dbh_cm" in d:
+    if truth and "true_dbh_d" in d:
         fig.add_trace(
             go.Scatter(
                 x=d["rank"],
-                y=d.true_dbh_cm,
+                y=d.true_dbh_d,
                 mode="markers",
                 name="true DBH (demo)",
                 marker=dict(symbol="line-ew-open", size=14, color=SERIES_TRUTH, line=dict(width=2)),
-                hovertemplate="true %{y:.2f} cm<extra></extra>",
+                hovertemplate=f"true %{{y:.2f}} {U.dl}<extra></extra>",
             )
         )
     fig.update_layout(
@@ -563,7 +670,7 @@ def plot_dbh_ci(df: pd.DataFrame, truth):
         margin=dict(l=10, r=10, t=30, b=10),
         legend=dict(orientation="h", y=1.1),
         xaxis_title="trees, sorted by DBH",
-        yaxis_title="DBH (cm)",
+        yaxis_title=f"DBH ({U.dl})",
         hovermode="closest",
     )
     fig.update_xaxes(showticklabels=False)
@@ -589,8 +696,8 @@ def plot_tree_slice(rec, fp: FitParams):
         if mask.any():
             fig.add_trace(
                 go.Scattergl(
-                    x=band[mask, 0],
-                    y=band[mask, 1],
+                    x=U.L(band[mask, 0]),
+                    y=U.L(band[mask, 1]),
                     mode="markers",
                     name=name,
                     marker=dict(size=3, color=color, opacity=0.6),
@@ -600,14 +707,14 @@ def plot_tree_slice(rec, fp: FitParams):
     if rec.fitted:
         t = np.linspace(0, 2 * np.pi, 200)
         for r, name, dash, width in (
-            (rec.dbh / 2, f"DBH {rec.dbh * 100:.2f} cm", "solid", 2),
-            (rec.ci_low / 2, f"CI low {rec.ci_low * 100:.2f}", "dash", 1.5),
-            (rec.ci_high / 2, f"CI high {rec.ci_high * 100:.2f}", "dash", 1.5),
+            (rec.dbh / 2, f"DBH {U.D(rec.dbh):.2f} {U.dl}", "solid", 2),
+            (rec.ci_low / 2, f"CI low {U.D(rec.ci_low):.2f}", "dash", 1.5),
+            (rec.ci_high / 2, f"CI high {U.D(rec.ci_high):.2f}", "dash", 1.5),
         ):
             fig.add_trace(
                 go.Scatter(
-                    x=rec.x + r * np.cos(t),
-                    y=rec.y + r * np.sin(t),
+                    x=U.L(rec.x + r * np.cos(t)),
+                    y=U.L(rec.y + r * np.sin(t)),
                     mode="lines",
                     name=name,
                     line=dict(color=STATUS_STYLE[rec.status]["color"], dash=dash, width=width),
@@ -618,8 +725,8 @@ def plot_tree_slice(rec, fp: FitParams):
         height=420,
         margin=dict(l=10, r=10, t=30, b=10),
         legend=dict(orientation="h", y=1.12),
-        xaxis_title="x (m)",
-        yaxis_title="y (m)",
+        xaxis_title=f"x ({U.ul})",
+        yaxis_title=f"y ({U.ul})",
         title=dict(text=f"Breast-height band ({len(band)} points)", font=dict(size=13)),
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
@@ -634,9 +741,9 @@ def plot_tree_3d(rec, fp: FitParams, max_points: int = 15000):
     fig = go.Figure()
     fig.add_trace(
         go.Scatter3d(
-            x=pts[~in_band, 0],
-            y=pts[~in_band, 1],
-            z=pts[~in_band, 2],
+            x=U.L(pts[~in_band, 0]),
+            y=U.L(pts[~in_band, 1]),
+            z=U.L(pts[~in_band, 2]),
             mode="markers",
             name="tree points",
             marker=dict(size=1.5, color="#9a9990"),
@@ -645,9 +752,9 @@ def plot_tree_3d(rec, fp: FitParams, max_points: int = 15000):
     )
     fig.add_trace(
         go.Scatter3d(
-            x=pts[in_band, 0],
-            y=pts[in_band, 1],
-            z=pts[in_band, 2],
+            x=U.L(pts[in_band, 0]),
+            y=U.L(pts[in_band, 1]),
+            z=U.L(pts[in_band, 2]),
             mode="markers",
             name="DBH band",
             marker=dict(size=2, color=SERIES_ESTIMATE),
@@ -667,9 +774,9 @@ def plot_tree_3d(rec, fp: FitParams, max_points: int = 15000):
             ring = c[None] + rec.dbh / 2 * (np.cos(t)[:, None] * u1 + np.sin(t)[:, None] * u2)
             fig.add_trace(
                 go.Scatter3d(
-                    x=ring[:, 0],
-                    y=ring[:, 1],
-                    z=ring[:, 2],
+                    x=U.L(ring[:, 0]),
+                    y=U.L(ring[:, 1]),
+                    z=U.L(ring[:, 2]),
                     mode="lines",
                     showlegend=h == 0.0,
                     name="fitted cylinder",
@@ -681,14 +788,14 @@ def plot_tree_3d(rec, fp: FitParams, max_points: int = 15000):
         height=420,
         margin=dict(l=0, r=0, t=30, b=0),
         legend=dict(orientation="h", y=1.08),
-        scene=dict(aspectmode="data", zaxis_title="height above ground (m)"),
+        scene=dict(aspectmode="data", zaxis_title=f"height above ground ({U.ul})"),
     )
     return fig
 
 
 def export_panel(records, fp: FitParams, seg: dict, source: str):
     st.subheader("Export")
-    ctx = inv.context_for(source, fp, ground=seg["gp"], segment=seg["sp"])
+    ctx = inv.context_for(source, fp, units=U.unit, ground=seg["gp"], segment=seg["sp"])
     cols = st.columns(max(len(registry.exporters), 1))
     for col, (name, exp) in zip(cols, sorted(registry.exporters.items())):
         with col:
@@ -831,7 +938,9 @@ def main():
         "Find trees in a point cloud, fit each stem at breast height, and report DBH with a confidence interval."
     )
 
-    kind, key, path, upload, demo, reader_opts = sidebar_source()
+    global U
+    kind, key, path, upload, demo, reader_opts, cloud_units = sidebar_source()
+    U = sidebar_units(cloud_units)
     run_btn, gp, sp = sidebar_segmentation()
     fp = sidebar_fit()
 
@@ -853,7 +962,7 @@ def main():
             progress = st.progress(0.0, "loading point cloud…")
             try:
                 points, truth = load_source(
-                    kind, key, path, tuple(sorted(reader_opts.items())), demo, upload
+                    kind, key, path, tuple(sorted(reader_opts.items())), demo, upload, cloud_units
                 )
                 seg = run_segmentation(points, gp, sp, progress)
                 seg.update(
@@ -889,7 +998,7 @@ def main():
         except Exception as exc:
             _fail("Fitting", exc)
             return
-    df = match_truth(records_frame(records), seg.get("truth"))
+    df = to_display(match_truth(records_frame(records), seg.get("truth")))
     if df.empty:
         st.warning("No trees to show.")
         return
@@ -935,12 +1044,13 @@ def main():
         rec = next(r for r in records if r.tree_id == tid)
         if rec.fitted:
             st.markdown(
-                f"**DBH {rec.dbh * 100:.2f} cm**, {rec.confidence:.0%} CI "
-                f"[{rec.ci_low * 100:.2f}, {rec.ci_high * 100:.2f}] cm · tilt {rec.tilt_deg:.1f}° · "
+                f"**DBH {U.D(rec.dbh):.2f} {U.dl}**, {rec.confidence:.0%} CI "
+                f"[{U.D(rec.ci_low):.2f}, {U.D(rec.ci_high):.2f}] {U.dl} · tilt {rec.tilt_deg:.1f}° · "
                 f"arc coverage {rec.arc_coverage:.0%} · inliers {rec.inlier_ratio:.0%} · RMSE {rec.rmse * 1000:.1f} mm"
             )
             st.markdown(
-                f"Ground {rec.ground_z:.3f} m · DBH plane elevation **{rec.bh_elevation:.3f} m**"
+                f"Ground {U.L(rec.ground_z):.3f} {U.ul} · DBH plane elevation "
+                f"**{U.L(rec.bh_elevation):.3f} {U.ul}** · lengths in {LABELS[U.unit]}"
             )
         if rec.message:
             (st.error if rec.status == STATUS_FAILED else st.warning)(rec.message)
@@ -959,10 +1069,10 @@ def main():
         cols = [
             "tree_id",
             "status",
-            "dbh_cm",
-            "ci_low_cm",
-            "ci_high_cm",
-            "dbh_se_cm",
+            "dbh_d",
+            "ci_low_d",
+            "ci_high_d",
+            "dbh_se_d",
             "x",
             "y",
             "ground_z",
@@ -974,25 +1084,29 @@ def main():
             "message",
         ]
         cols += [c for c in df.columns if c.startswith("basal_area")] + [
-            c for c in ("true_dbh_cm", "covered") if c in df
+            c for c in ("true_dbh_d", "covered") if c in df
         ]
         st.dataframe(
             shown[cols],
             hide_index=True,
             width="stretch",
             column_config={
-                "dbh_cm": st.column_config.NumberColumn("DBH (cm)", format="%.2f"),
-                "ci_low_cm": st.column_config.NumberColumn("CI low", format="%.2f"),
-                "ci_high_cm": st.column_config.NumberColumn("CI high", format="%.2f"),
-                "dbh_se_cm": st.column_config.NumberColumn("SE (cm)", format="%.3f"),
+                "dbh_d": st.column_config.NumberColumn(f"DBH ({U.dl})", format="%.2f"),
+                "ci_low_d": st.column_config.NumberColumn("CI low", format="%.2f"),
+                "ci_high_d": st.column_config.NumberColumn("CI high", format="%.2f"),
+                "dbh_se_d": st.column_config.NumberColumn(f"SE ({U.dl})", format="%.3f"),
                 "arc_coverage": st.column_config.ProgressColumn(
                     "Arc coverage", min_value=0, max_value=1, format="percent"
                 ),
                 "inlier_ratio": st.column_config.ProgressColumn(
                     "Inliers", min_value=0, max_value=1, format="percent"
                 ),
-                "bh_elevation": st.column_config.NumberColumn("DBH elevation (m)", format="%.3f"),
-                "ground_z": st.column_config.NumberColumn("Ground (m)", format="%.3f"),
+                "bh_elevation": st.column_config.NumberColumn(
+                    f"DBH elevation ({U.ul})", format="%.3f"
+                ),
+                "ground_z": st.column_config.NumberColumn(f"Ground ({U.ul})", format="%.3f"),
+                "x": st.column_config.NumberColumn(f"x ({U.ul})", format="%.3f"),
+                "y": st.column_config.NumberColumn(f"y ({U.ul})", format="%.3f"),
             },
         )
         export_panel(records, fp, seg, seg.get("source", ""))

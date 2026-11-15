@@ -13,9 +13,11 @@ import math
 from pathlib import Path
 
 from forest_inventory_pipeline.plugins import (
+    UNITS_OPTION,
     Exporter,
     OptionSpec,
     atomic_write,
+    output_unit,
     register_exporter,
 )
 
@@ -34,15 +36,17 @@ class GeoJsonExporter(Exporter):
     options = (
         OptionSpec("crs", "", "CRS name to record, e.g. EPSG:25832 (empty = none)"),
         OptionSpec("include_failed", False, "include trees that could not be fitted"),
+        UNITS_OPTION,
     )
 
     def export(self, trees, path: Path, context, **options) -> Path:
         opts = self.resolve_options(options)
+        unit = output_unit(opts, context)
         features = []
         for t in trees:
             if not (t.fitted or opts["include_failed"]):
                 continue
-            row = t.to_row()
+            row = t.to_row(unit)
             props = {
                 k: _num(row[k])
                 for k in (
@@ -54,13 +58,17 @@ class GeoJsonExporter(Exporter):
                     "confidence",
                     "ground_z",
                     "message",
+                    "length_unit",
                 )
             }
             props.update({k: _num(v) for k, v in t.extra.items()})
             features.append(
                 {
                     "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [t.x, t.y, t.bh_elevation]},
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [row["x"], row["y"], row["bh_elevation"]],
+                    },
                     "properties": props,
                 }
             )

@@ -355,10 +355,12 @@ def inventory(
     reader: Annotated[Optional[str], typer.Option("--reader", help="Force a reader by name (default: by file extension).")] = None,
     reader_option: Annotated[Optional[list[str]], typer.Option("--reader-option", "-R", help="Reader option key=value, e.g. topic=/cloud_registered. Repeatable.")] = None,
     plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s) to load.")] = None,
-    breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height (m).")] = None,
+    units: Annotated[str, typer.Option("--units", "-u", help="Length unit of the input cloud: m, ft (international) or us_ft (US survey). Also the unit of --breast-height and --model-sd.")] = "m",
+    output_units: Annotated[Optional[str], typer.Option("--output-units", help="Length unit of the exports: m, ft or us_ft (default: same as --units).")] = None,
+    breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height, in --units (default 1.3 m; 4.5 ft when --units is feet).")] = None,
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
-    model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd (m); calibrate with `fip calibrate`.")] = None,
+    model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in --units; calibrate with `fip calibrate`.")] = None,
     log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
 ):
     """
@@ -382,7 +384,21 @@ def inventory(
         if unknown:
             raise typer.BadParameter(f"unknown config section(s) {sorted(unknown)}; expected ground, segment, fit")
         fit_cfg = dict(config.get("fit", {}))
-        for key, val in dict(breast_height=breast_height, confidence=confidence, ci_method=ci_method, model_sd=model_sd).items():
+        from .units import US_BREAST_HEIGHT_M, is_feet, normalize_unit, to_metres
+
+        try:
+            in_unit = normalize_unit(units)
+            out_unit = normalize_unit(output_units) if output_units else in_unit
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+        if breast_height is not None:
+            fit_cfg["breast_height"] = float(to_metres(breast_height, in_unit))
+        elif is_feet(in_unit) and "breast_height" not in fit_cfg:
+            fit_cfg["breast_height"] = US_BREAST_HEIGHT_M
+            logger.info("units are feet: using the US breast height of 4.5 ft (1.3716 m)")
+        if model_sd is not None:
+            fit_cfg["model_sd"] = float(to_metres(model_sd, in_unit))
+        for key, val in dict(confidence=confidence, ci_method=ci_method).items():
             if val is not None:
                 fit_cfg[key] = val
         try:
@@ -410,7 +426,7 @@ def inventory(
                 raise typer.BadParameter(f"reader option must be key=value, got {item!r}")
             k, v = item.split("=", 1)
             reader_opts[k] = v
-        xyz = inv.load_points(input_fp, reader=reader, **reader_opts)
+        xyz = inv.load_points(input_fp, reader=reader, units=in_unit, **reader_opts)
         ground, non_ground = inv.segment_ground(xyz, gp)
         normalized = inv.normalize_heights(ground, non_ground, gp)
         pts, labels = inv.segment_trees(normalized, sp)
@@ -418,7 +434,7 @@ def inventory(
         if not trees:
             raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
         records = inv.fit_trees(trees, ground, fp, gp, keep_points=False)
-        ctx = inv.context_for(str(input_fp), fp, ground=gp, segment=sp)
+        ctx = inv.context_for(str(input_fp), fp, units=out_unit, ground=gp, segment=sp)
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
         logger.info(
@@ -446,7 +462,8 @@ def exc_info_str(exc: BaseException) -> str:
 def calibrate(
     trees_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="CSV written by `fip inventory`.")],
     reference_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Field data with columns x, y, dbh.")],
-    dbh_unit: Annotated[str, typer.Option(help="Unit of reference dbh: auto, m or cm.")] = "auto",
+    dbh_unit: Annotated[str, typer.Option(help="Unit of reference dbh: auto (m or cm), m, cm, in or ft.")] = "auto",
+    xy_unit: Annotated[Optional[str], typer.Option(help="Unit of reference x, y: m, ft or us_ft (default: the length_unit of TREES_CSV).")] = None,
     max_distance: Annotated[float, typer.Option(help="Max stem position mismatch (m) for matching.")] = 0.5,
     current_model_sd: Annotated[float, typer.Option(help="model_sd used for TREES_CSV (m).")] = 0.005,
 ):
@@ -459,26 +476,45 @@ def calibrate(
     from .records import TreeRecord
 
     try:
+        from .units import normalize_unit, to_metres
+
         recs = []
+        csv_unit = "m"
         with trees_csv.open(newline="", encoding="utf-8") as fh:
             for row in _csv.DictReader(fh):
-                def f(k):
-                    return float(row[k]) if row.get(k) not in (None, "") else float("nan")
+                csv_unit = normalize_unit(row.get("length_unit") or "m")
+
+                def f(k, conv=True):
+                    if row.get(k) in (None, ""):
+                        return float("nan")
+                    v = float(row[k])
+                    return float(to_metres(v, csv_unit)) if conv else v
+
                 recs.append(TreeRecord(
                     tree_id=int(row["tree_id"]), status=row["status"], x=f("x"), y=f("y"),
                     ground_z=f("ground_z"), breast_height=f("breast_height"), bh_elevation=f("bh_elevation"),
                     n_points=int(row["n_points"]), dbh=f("dbh"), dbh_se=f("dbh_se"),
                     ci_low=f("ci_low"), ci_high=f("ci_high"),
                 ))
-        res = _calibrate(recs, read_reference_csv(reference_csv, dbh_unit), current_model_sd, max_distance)
-    except (FIPError, KeyError) as exc:
+        ref = read_reference_csv(reference_csv, dbh_unit)
+        ref[:, :2] = to_metres(ref[:, :2], normalize_unit(xy_unit) if xy_unit else csv_unit)
+        res = _calibrate(recs, ref, current_model_sd, max_distance)
+    except (FIPError, KeyError, ValueError) as exc:
         logger.error(f"calibration failed: {exc}")
         sys.exit(2)
     logger.info(
         f"matched {res.n_matched}/{res.n_reference} reference trees: bias {res.bias * 100:+.2f} cm, "
         f"RMSE {res.rmse * 100:.2f} cm, CI coverage {res.coverage:.0%}"
     )
-    logger.info(f"suggested fit.model_sd = {res.model_sd:.4f} m  (re-run with --model-sd {res.model_sd:.4f})")
+    from .units import SHORT, from_metres
+
+    sd_cli = float(from_metres(res.model_sd, csv_unit))
+    logger.info(
+        f"suggested fit.model_sd = {res.model_sd:.4f} m"
+        + (f" = {sd_cli:.5f} {SHORT[csv_unit]}" if csv_unit != "m" else "")
+        + f"  (re-run with --model-sd {sd_cli:.5f}"
+        + (f" --units {csv_unit})" if csv_unit != "m" else ")")
+    )
     if abs(res.bias) > 2 * res.rmse / np.sqrt(res.n_matched) and abs(res.bias) > 0.005:
         logger.warning("bias is significant; check breast_height and ground segmentation before trusting the CI")
 

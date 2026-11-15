@@ -38,6 +38,7 @@ class TreeRecord:
     """
     One tree. All lengths in metres (the input cloud's unit).
 
+    Stored in metres; ``to_row(unit)`` converts for output.
     ``x``, ``y`` are the stem centre at breast height in the input coordinate frame.
     ``ground_z`` is the interpolated terrain elevation under the stem and
     ``bh_elevation = ground_z + breast_height`` is the absolute elevation of the DBH plane.
@@ -74,22 +75,47 @@ class TreeRecord:
     def fitted(self) -> bool:
         return self.status != STATUS_FAILED and np.isfinite(self.dbh)
 
-    def to_row(self) -> dict[str, Any]:
-        """Flat dict for tables/CSV. Lengths in metres plus a convenience DBH in cm."""
+    def to_row(self, unit: str = "m") -> dict[str, Any]:
+        """
+        Flat dict for tables/CSV. Lengths in ``unit`` (m, ft or us_ft), plus DBH in cm and
+        inches for convenience. Areas from metric plugins keep their own declared units.
+        """
+        from .units import from_metres, normalize_unit
+
+        unit = normalize_unit(unit)
         # not dataclasses.asdict: that would deep-copy the point array
         d = {f.name: getattr(self, f.name) for f in fields(self) if f.name != "points"}
         extra = dict(d.pop("extra"))
         ax = d.pop("axis")
         d["axis_x"], d["axis_y"], d["axis_z"] = ax
+        for key in LENGTH_FIELDS:
+            d[key] = from_metres(d[key], unit)
         d["dbh_cm"] = self.dbh * 100.0 if self.fitted else float("nan")
+        d["dbh_in"] = self.dbh / 0.0254 if self.fitted else float("nan")
+        d["length_unit"] = unit
         d.update(extra)
         return d
 
+
+#: fields holding lengths/coordinates (converted by ``to_row(unit)``)
+LENGTH_FIELDS = (
+    "x",
+    "y",
+    "ground_z",
+    "breast_height",
+    "bh_elevation",
+    "dbh",
+    "dbh_se",
+    "ci_low",
+    "ci_high",
+    "rmse",
+)
 
 # Stable column order for tabular exports; plugin metric columns are appended after these.
 CORE_COLUMNS = [
     "tree_id",
     "status",
+    "length_unit",
     "x",
     "y",
     "ground_z",
@@ -97,6 +123,7 @@ CORE_COLUMNS = [
     "bh_elevation",
     "dbh",
     "dbh_cm",
+    "dbh_in",
     "dbh_se",
     "ci_low",
     "ci_high",

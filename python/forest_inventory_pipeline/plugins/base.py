@@ -56,8 +56,25 @@ class ExportContext:
     source: str = ""
     breast_height: float = 1.3
     confidence: float = 0.95
+    #: output length unit for exports: m, ft or us_ft (records are always in metres)
     units: str = "m"
     parameters: dict[str, Any] = field(default_factory=dict)
+
+
+UNITS_OPTION = OptionSpec(
+    "units",
+    "auto",
+    "output length unit: auto (the run's units), m, ft (international) or us_ft (US survey)",
+    choices=("auto", "m", "ft", "us_ft"),
+)
+
+
+def output_unit(opts: dict, context: "ExportContext") -> str:
+    """Resolve an exporter's ``units`` option against the run context."""
+    from ..units import normalize_unit
+
+    unit = opts.get("units", "auto")
+    return normalize_unit(context.units if unit == "auto" else unit)
 
 
 class Exporter(ABC):

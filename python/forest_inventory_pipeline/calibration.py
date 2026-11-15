@@ -87,11 +87,11 @@ def read_reference_csv(path: str | Path, dbh_unit: str = "auto") -> np.ndarray:
 def _to_metres(ref: np.ndarray, dbh_unit: str) -> np.ndarray:
     if dbh_unit == "auto":
         dbh_unit = "cm" if np.median(ref[:, 2]) > 3.0 else "m"
-    if dbh_unit == "cm":
-        ref = ref.copy()
-        ref[:, 2] /= 100.0
-    elif dbh_unit != "m":
-        raise ParameterError(f"dbh_unit must be 'auto', 'm' or 'cm', got {dbh_unit!r}")
+    scale = {"m": 1.0, "cm": 0.01, "in": 0.0254, "ft": 0.3048}.get(dbh_unit)
+    if scale is None:
+        raise ParameterError(f"dbh_unit must be 'auto', 'm', 'cm', 'in' or 'ft', got {dbh_unit!r}")
+    ref = ref.copy()
+    ref[:, 2] *= scale
     return ref
 
 

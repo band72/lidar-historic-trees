@@ -1,5 +1,6 @@
 # Config for `fip inventory INPUT -c config/inventory.yaml`. Every key is optional;
-# values shown are the defaults. Lengths in metres.
+# values shown are the defaults. Lengths in metres (always, even when the cloud is in feet:
+# --units ft converts the cloud; config values stay metric).
 
 ground:
   cloth_resolution: 0.5   # CSF cloth grid

@@ -149,9 +149,12 @@ The sidebar has three steps.
 
 ### Step 1 · Point cloud
 
+Choose **Display & export units** at the top: *same as cloud*, *m / cm*, *ft / in* or *US ft / in*. This sets the units of the map, the table, the charts and every download. In feet mode, the breast-height slider is in feet (default 4.5 ft).
+
 - **Demo plot**: a synthetic plot. Choose the number of trees and a random seed.
 - **File / bag path**: type the path to a file on this computer (any [supported format](#5-input-data)) or a ROS2 bag folder. Large files are best opened this way. For ROS bags, a *ROS bag options* panel appears, with topic, target frame, every n-th message and more.
 - **Upload**: drag a file into the browser, up to 4 GB.
+- **Point cloud units** (for files): metres, feet or US survey feet.
 
 ### Step 2 · Find trees
 
@@ -225,10 +228,12 @@ fip inventory INPUT [options]
 | `--reader NAME` | Force a reader (normally picked from the file extension) |
 | `-R, --reader-option KEY=VALUE` | Reader option, e.g. `-R topic=/points`; repeatable |
 | `--plugin-dir DIR` | Load extra plugins from this folder; repeatable |
-| `--breast-height M` | Override the breast height |
+| `-u, --units m\|ft\|us_ft` | Length unit of the input cloud, and of `--breast-height` and `--model-sd` (see [Metres and feet](#metres-and-feet)) |
+| `--output-units m\|ft\|us_ft` | Length unit of the exports (default: same as `--units`) |
+| `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
-| `--model-sd M` | Override the systematic uncertainty (metres) |
+| `--model-sd S` | Override the systematic uncertainty (in `--units`) |
 | `--log-level trace\|debug\|info\|warn` | Console verbosity (the log file always has full detail) |
 
 Examples:
@@ -238,8 +243,8 @@ Examples:
 fip inventory plot.laz -o out --plugin-dir plugins -e csv -e dxf -e geojson \
     -E dxf.z_mode=plan -E geojson.crs=EPSG:25832
 
-# US breast height, 90 % intervals, bootstrap, calibrated systematic error
-fip inventory plot.laz -o out --breast-height 1.37 --confidence 0.9 --ci-method bootstrap --model-sd 0.012
+# a US plot in feet: 4.5 ft breast height, 90 % intervals, bootstrap; outputs in feet and inches
+fip inventory plot.laz -o out --units ft --confidence 0.9 --ci-method bootstrap
 
 # everything from a settings file
 fip inventory plot.laz -o out -c config/inventory.yaml
@@ -259,7 +264,7 @@ Exit codes: `0` success, `2` invalid input or settings (with a clear message), `
 ### `fip calibrate`
 
 ```bash
-fip calibrate out/trees.csv field_measurements.csv [--dbh-unit auto|m|cm] [--max-distance 0.5] [--current-model-sd 0.005]
+fip calibrate out/trees.csv field_measurements.csv [--dbh-unit auto|m|cm|in|ft] [--xy-unit m|ft|us_ft] [--max-distance 0.5] [--current-model-sd 0.005]
 ```
 
 See [section 9](#9-calibrating-the-confidence-interval).
@@ -278,9 +283,29 @@ See [section 9](#9-calibrating-the-confidence-interval).
 | Text | `.txt .csv .asc` | The first three numeric columns are x, y, z. Header lines are skipped and the delimiter is detected automatically |
 
 Requirements:
-- **Units must be metres.** Every setting assumes metres. A cloud in millimetres or feet gives nonsense; convert it first.
+- **Units: metres or feet.** Tell the program which one your cloud uses (see [Metres and feet](#metres-and-feet) below). Clouds in millimetres must be converted first.
 - The cloud should cover the stems from the ground up to at least 1.5 m. Terrestrial, mobile (backpack/robot/handheld) and dense UAV scans work. Typical airborne LiDAR is too sparse on the stems.
 - One plot per file. Very large clouds (more than about 50 million points) are best cropped or thinned first.
+
+### Metres and feet
+
+| Unit | Name in the program | Exactly |
+|---|---|---|
+| metre | `m` (default) | |
+| international foot | `ft` | 0.3048 m |
+| US survey foot | `us_ft` | 1200/3937 m. Many US State Plane systems use it; over large coordinate values it differs from `ft` |
+
+- **Input:** `fip inventory plot.las --units ft`, or *Point cloud units* in the app. The cloud is converted to metres on reading, and all calculations run in metres.
+- **Output:** exports use the same unit as the input by default, so a feet cloud gives feet CSV, DXF and GeoJSON with your **original coordinates**. Choose differently with `--output-units m`, per exporter with `-E dxf.units=m`, or with *Display & export units* in the app.
+- **DBH:** shown in cm for metric output and in **inches** for feet. The CSV always has both `dbh_cm` and `dbh_in`, and a `length_unit` column says which unit the other lengths are in.
+- **US breast height:** with `--units ft` or `us_ft`, breast height defaults to **4.5 ft** (1.37 m). `--breast-height` and `--model-sd` are then given in feet too, e.g. `--breast-height 4.5`.
+- **Config files** (`-c`) always use metres.
+- If a cloud's size suggests it's in feet but you didn't say so, the log warns you.
+
+```bash
+fip inventory stateplane.laz --units us_ft -o out            # outputs in US survey feet, DBH in inches
+fip inventory plot_ft.las --units ft --output-units m -o out # read feet, write metres
+```
 
 ### ROS bags (ROS1 `.bag`, ROS2 folder, `.db3`, `.mcap`)
 
@@ -311,17 +336,18 @@ If the bag has a single PointCloud2 topic, the reader uses it automatically. Oth
 
 ### `trees.csv`: one row per tree
 
-All lengths are in metres. Failed trees are included, with a reason, unless you pass `-E csv.include_failed=false`.
+Lengths are in the output unit named in the `length_unit` column: metres by default, or feet ([details](#metres-and-feet)). Failed trees are included, with a reason, unless you pass `-E csv.include_failed=false`.
 
 | Column | Meaning |
 |---|---|
 | `tree_id` | Tree number |
 | `status` | `ok`, `warning` (measured, but check `message`) or `failed` (not measurable; see `message`) |
+| `length_unit` | `m`, `ft` or `us_ft`: the unit of every length column below |
 | `x`, `y` | Stem centre at breast height, in the input coordinate system |
 | `ground_z` | Terrain elevation under the stem |
 | `breast_height` | Height used (e.g. 1.3) |
 | `bh_elevation` | **Absolute elevation of the DBH plane** = `ground_z + breast_height` |
-| `dbh`, `dbh_cm` | DBH in m and in cm |
+| `dbh`, `dbh_cm`, `dbh_in` | DBH in the length unit, in cm, and in inches |
 | `dbh_se` | Standard error of the DBH |
 | `ci_low`, `ci_high` | Confidence interval bounds |
 | `confidence`, `ci_method` | Interval level and method |
@@ -334,7 +360,7 @@ All lengths are in metres. Failed trees are included, with a reason, unless you 
 | `cluster_id` | Segmentation cluster (differs from `tree_id` when merged trees were split apart) |
 | `basal_area_m2`, `basal_area_ci_low_m2`, `basal_area_ci_high_m2` | Basal area and its interval |
 
-### `trees.dxf`: CAD drawing (metres)
+### `trees.dxf`: CAD drawing (metres or feet)
 
 Each tree's DBH is drawn as a **circle with diameter = DBH, lying flat in a horizontal plane**. `-E dxf.z_mode=...` sets where that plane is:
 
@@ -355,7 +381,7 @@ Layers:
 | `FIP_LABEL` | Text such as `T12 34.2cm [33.1-35.3]` |
 | `FIP_AXIS` | Line from the ground to breast height (elevation mode only) |
 
-Each DBH circle also carries extended data (XDATA, application id `FIP`): the tree id, DBH, CI and status. Other options: `include_ci`, `include_labels`, `include_axis`, `text_height`.
+Each DBH circle also carries extended data (XDATA, application id `FIP`): the tree id, DBH, CI, status and units. In feet the drawing's units are set to feet (or US survey feet for `us_ft`), and labels show inches. Other options: `include_ci`, `include_labels`, `include_axis`, `text_height`, `units`.
 
 ### `trees.geojson` (example plugin)
 
@@ -450,6 +476,7 @@ A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to
 | **One tree split into several** | Raise `k` or `beta` |
 | **Many `failed` trees: "only N points in the breast-height band"** | Sparse stems: widen the band (`band_half_width`) or lower `min_band_points` |
 | **Many `warning: low arc coverage`** | The stems were scanned from one side, so the intervals are wider by design. Scan from more positions if you need tighter intervals |
+| **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
 | **ROS bag: "several PointCloud2 topics"** | Choose one with `-R topic=/name` |
@@ -465,7 +492,7 @@ A plugin is a `.py` file in a folder. You can also set `FIP_PLUGIN_PATH=/path/to
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 68 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 76 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 ```
 
