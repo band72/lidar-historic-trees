@@ -365,6 +365,7 @@ def inventory(
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
     model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in the input unit; calibrate with `fip calibrate`.")] = None,
+    complete_partial: Annotated[bool, typer.Option("--complete-partial/--no-complete-partial", help="Complete stems seen from one side by measuring over a taller window (fit.complete_partial_stems).")] = False,
     log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
 ):
     """
@@ -400,6 +401,8 @@ def inventory(
         for key, val in dict(confidence=confidence, ci_method=ci_method).items():
             if val is not None:
                 fit_cfg[key] = val
+        if complete_partial:
+            fit_cfg["complete_partial_stems"] = True
         try:
             gp = inv.GroundParams(**ground_cfg)
             sp = inv.SegmentParams(**config.get("segment", {}))

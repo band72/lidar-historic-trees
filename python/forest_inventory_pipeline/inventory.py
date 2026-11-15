@@ -743,7 +743,8 @@ def fit_trees(
                 sf.tilt_deg,
             )
             rec.axis = sf.axis
-            rec.message = "; ".join(sf.warnings)
+            rec.band_half_width = sf.band_half_width
+            rec.message = "; ".join(sf.warnings + sf.notes)
             for m in metric_objs:
                 try:
                     values = m.compute(rec)

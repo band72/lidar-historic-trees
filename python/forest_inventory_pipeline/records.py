@@ -62,6 +62,9 @@ class TreeRecord:
     confidence: float = float("nan")
     ci_method: str = ""
     n_band_points: int = 0
+    #: half-height of the measurement window (m); larger than the standard band when a partly
+    #: seen stem was completed from a taller window (``fit.complete_partial_stems``)
+    band_half_width: float = float("nan")
     inlier_ratio: float = float("nan")
     rmse: float = float("nan")
     arc_coverage: float = float("nan")
@@ -126,6 +129,7 @@ LENGTH_FIELDS = (
     "ci_low",
     "ci_high",
     "rmse",
+    "band_half_width",
 )
 
 # Stable column order for tabular exports; plugin metric columns are appended after these.
@@ -149,6 +153,7 @@ CORE_COLUMNS = [
     "ci_method",
     "n_points",
     "n_band_points",
+    "band_half_width",
     "inlier_ratio",
     "rmse",
     "arc_coverage",

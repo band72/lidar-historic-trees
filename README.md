@@ -188,7 +188,7 @@ or in the web app: choose the file, enter the same box in *Crop*, press **Run se
 | Trees missing entirely | check the height slice contains breast height; lower `min_z` |
 | Trees' ground height looks wrong | `--ground-source csf`, or adjust the cloth resolution |
 
-**5. Check the measurements.** In the app's **Table & export** tab, filter to *warning* and *failed* and read the `message`. Open **Tree detail** for a few trees, including a large one and a leaning one, and check that the fitted circle follows the points. Use the live sliders to set the *breast height* your organisation uses (1.3 m, or 4.5 ft in the US), the *confidence level* and the *band*. Trees flagged for low arc coverage were seen from one side only: treat their intervals as the honest ones, and don't tighten them.
+**5. Check the measurements.** In the app's **Table & export** tab, filter to *warning* and *failed* and read the `message`. Open **Tree detail** for a few trees, including a large one and a leaning one, and check that the fitted circle follows the points. Use the live sliders to set the *breast height* your organisation uses (1.3 m, or 4.5 ft in the US), the *confidence level* and the *band*. Trees flagged for low arc coverage were seen from one side only: treat their intervals as the honest ones, and don't tighten them. If the scanner moved around the plot, try *Complete partly seen stems* (`--complete-partial`) to measure them from a taller window.
 
 **6. Calibrate the interval** with tape-measured trees ([section 9](#9-calibrating-the-confidence-interval)). Measure 15–30 trees in the plot, record their positions in the same coordinate system, and run:
 
@@ -256,6 +256,7 @@ These sliders update every result instantly.
 | Systematic uncertainty | 0.5 cm | Error the scan itself can't reveal. **Calibrate it** with field data ([section 9](#9-calibrating-the-confidence-interval)) |
 | Fitting details | | Inlier tolerance, robust kernel scale, max DBH, max stem tilt, RANSAC iterations, bootstrap resamples |
 | Quality flags | | Thresholds that turn a tree's status into *warning* (arc coverage default 60 %), and the assumed *stem non-roundness* that widens the interval of partly seen stems |
+| Partly seen stems | off | *Complete partly seen stems*: measure flagged stems over a taller window so other heights complete the circle |
 | Merged trees | on, 15 cm | Splits clusters that contain several stems, which recovers trees the segmentation merged |
 
 ### The main area
@@ -308,6 +309,7 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
+| `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
 | `--log-level trace\|debug\|info\|warn` | Console verbosity (the log file always has full detail) |
 
@@ -443,6 +445,7 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `ci_low`, `ci_high` | Confidence interval bounds |
 | `confidence`, `ci_method` | Interval level and method |
 | `n_points`, `n_band_points` | Points in the tree, and in the breast-height band |
+| `band_half_width` | Half-height of the measurement window used: 0.25 m normally, more when a partly seen stem was completed |
 | `inlier_ratio` | Share of band points on the fitted stem surface |
 | `rmse` | Fit residual (m) |
 | `arc_coverage`, `max_gap_deg` | How much of the stem circumference was scanned, and the largest unscanned gap |
@@ -524,6 +527,7 @@ fit:
   model_sd: 0.005           # systematic uncertainty (m); calibrate it
   split_stems: true         # recover trees merged by segmentation
   min_arc_coverage: 0.6     # stems scanned from fewer sides than this are flagged
+  complete_partial_stems: false  # true: measure flagged stems over a taller window to see more of the circle
   ovality_sd: 0.03          # assumed stem non-roundness; widens intervals of partly seen stems
 ```
 
@@ -565,7 +569,23 @@ When the scan sees only one side of a trunk, the program still measures it, says
 
 - **Flag:** any stem whose scanned arc covers less than 60 % of the circumference (`fit.min_arc_coverage`, default 0.6, so half-visible stems are flagged) gets status `warning`, with a message such as *"low arc coverage (53 %): stem seen from one side; DBH assumes a round stem, interval widened by ±3.1 cm for possible non-roundness"*.
 - **Widen:** the interval includes an allowance for the part of the stem that was not seen: `view_sd = ovality_sd × DBH × 3 × (1 − arc_coverage)`, which is zero for a stem seen all round. `fit.ovality_sd` (default 0.03, i.e. 3 %) is the assumed non-roundness of your stems, (long − short) / (long + short). The allowance is added to the measurement uncertainty, and the CSV has it as the `view_sd` column. The measured DBH itself never changes.
-- **Check:** with stems that really are 3 % oval and random orientation, the 95 % interval contains the true diameter in 100 % of simulated cases at 270°, 180° and 120°. Before this allowance existed it contained it only 57 % of the time at 180° and 38 % at 120°. At 6 % ovality (twice the assumption) the coverage is 100 % at 270°, 95 % at 180° and 78 % at 120°.
+- **Check:** with stems that really are 3 % oval and random orientation, the 95 % interval contains the true diameter in 100 % of simulated cases at 270°, 180° and 120°. Before this allowance existed it contained it only 57 % of the time at 180° and 38 % at 120°. At 6 % ovality (twice the assumption) the coverage is about 100 % at 270°, 90-95 % at 180° and 70-78 % at 120° (repeated simulations differ by a few percent).
+
+**Optional: complete partly seen stems (`fit.complete_partial_stems`, `--complete-partial`).** DBH is always the diameter of the full circle through the visible arc, never the width of the visible part. This setting goes further and tries to see more of the circle. For every stem that is flagged for low arc coverage, or that has too few points at breast height to be measured at all, the program widens the measurement window in 0.1 m steps (up to `fit.max_band_half_width`, default ±0.75 m around breast height) until about 85 % of the circumference has been seen, then refits. This helps when the scanner moved, so that other heights show other sides of the stem. The taller fit includes a **taper term**, so the result is still the diameter *at breast height* and a window that isn't centred (the segmentation slice starts at 1.0 m) doesn't bias it.
+
+Simulated stems (60 per row, a 120°-wide view that turns 120° per metre of height, points only above 1.0 m, 0.5 cm/m taper):
+
+| Stems actually | Setting | DBH RMSE | Arc coverage | Still flagged |
+|---|---|---|---|---|
+| 3 % oval | off | 1.78 cm | 51 % | 100 % |
+| 3 % oval | **on** | **1.16 cm** | 69 % | 0 % |
+| 6 % oval | off | 3.66 cm | 51 % | 100 % |
+| 6 % oval | **on** | **2.55 cm** | 68 % | 3 % |
+
+- **It changes nothing when it can't help.** If the same side is hidden at every height, the stem keeps its standard fit and its `warning`, and no note is added. Stems that are already seen well are not touched. On the synthetic benchmark plots (same side hidden at every height) results are identical with the setting on.
+- **Stems it can now include.** A stem that would fail with "too few points in the band" is measured from the taller window instead of being dropped, with a note saying so.
+- **It is opt-in, because it changes measurements.** The `message` column records every case: *"seen from one side at breast height (arc coverage 51 %); completed to 69 % using breast height ±0.74 m with a taper term"*, and `band_half_width` gives the window used. Trees completed this way are no longer marked `warning` once 60 % of the circumference is seen.
+- **Its limits.** A taller window can pick up low branches or butt swell, which the robust fit down-weights but cannot remove completely. It does not make an interval honest for stems far more oval than `ovality_sd` assumes: at 6 % ovality the 95 % interval still held only about 65-73 % of the time in this simulation.
 
 **What the program cannot do.** The 3 % is an assumption, not a measurement of your forest. Stems that are strongly oval, fluted or buttressed (like the 44 × 36 cm example above) will still be mis-measured from one side by more than the interval says. For such species raise `fit.ovality_sd` (the app has a *Stem non-roundness* slider), or better, scan from more sides.
 
@@ -615,7 +635,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **One tree split into several** | Raise `k` or `beta` |
 | **Many `failed` trees: "only N points in the breast-height band"** | Sparse stems: widen the band (`band_half_width`) or lower `min_band_points` |
 | **Many `warning: low arc coverage`** | The stems were scanned from one side (less than 60 % of the circumference). Their intervals are already widened for this, but strongly oval stems can still be off by more: see [Stems that are only partly visible](#stems-that-are-only-partly-visible). Scan from more positions |
-| **Half the trunk is missing in the scan** | It is measured, flagged `warning` and given a wider interval; see [Stems that are only partly visible](#stems-that-are-only-partly-visible) |
+| **Half the trunk is missing in the scan** | It is measured, flagged `warning` and given a wider interval. If the scanner moved, `--complete-partial` can complete it from other heights; see [Stems that are only partly visible](#stems-that-are-only-partly-visible) |
 | **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
@@ -635,7 +655,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 117 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 128 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```

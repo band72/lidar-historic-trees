@@ -51,7 +51,7 @@ full rank and the covariance is well defined.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field, replace
 from typing import Literal
 
 import numpy as np
@@ -92,6 +92,13 @@ class FitParams:
     #: assumed 1-sd non-roundness of stems, (long - short) / (long + short); widens the interval
     #: of partly seen stems. An assumption: raise it for fluted or buttressed species.
     ovality_sd: float = 0.03
+    #: for stems flagged for low arc coverage (or too few band points), widen the measurement
+    #: window up to ``max_band_half_width`` to see more of the circumference, fitting a taper
+    #: so the DBH stays the diameter at breast height. Off by default: it changes measurements.
+    complete_partial_stems: bool = False
+    max_band_half_width: float = 0.75
+    #: stop widening once this fraction of the circumference is seen (else use the best window)
+    complete_target_coverage: float = 0.85
     max_relative_ci_width: float = 0.25
     min_inlier_ratio: float = 0.3
     #: split clusters that contain several stems at breast height (under-segmentation)
@@ -150,6 +157,15 @@ class FitParams:
         require(0 <= self.model_sd <= 0.2, f"model_sd must be in [0, 0.2] m, got {self.model_sd}")
         require(
             0 <= self.ovality_sd <= 0.3, f"ovality_sd must be in [0, 0.3], got {self.ovality_sd}"
+        )
+        require(
+            0.0 < self.complete_target_coverage <= 1.0,
+            f"complete_target_coverage must be in (0, 1], got {self.complete_target_coverage}",
+        )
+        require(
+            self.band_half_width <= self.max_band_half_width <= 1.5,
+            "max_band_half_width must be between band_half_width and 1.5 m, "
+            f"got {self.max_band_half_width}",
         )
         require(
             0.5 <= self.confidence < 1.0, f"confidence must be in [0.5, 1), got {self.confidence}"
@@ -211,6 +227,10 @@ class StemFit:
     tilt_deg: float
     converged: bool
     warnings: list[str] = field(default_factory=list)
+    #: informational remarks that do not make the tree a "warning" (e.g. the band was widened)
+    notes: list[str] = field(default_factory=list)
+    #: half-height of the measurement window that was used (m)
+    band_half_width: float = 0.0
 
     @property
     def status(self) -> str:
@@ -226,18 +246,25 @@ def _direction(a: float, b: float) -> np.ndarray:
 
 
 def residuals(theta: np.ndarray, points: np.ndarray, z_ref: float) -> np.ndarray:
-    """Signed point-to-surface distances (m). Positive = outside the cylinder."""
-    x0, y0, a, b, r = theta
+    """
+    Signed point-to-surface distances (m). Positive = outside the surface.
+
+    ``theta`` is [x0, y0, a, b, r], or [x0, y0, a, b, r, s] for a tapered stem whose radius
+    changes linearly with height: r(z) = r + s * (z - z_ref). ``r`` is always the radius at
+    ``z_ref`` (breast height), so DBH stays the diameter at breast height.
+    """
+    x0, y0, a, b, r = theta[:5]
     d = _direction(a, b)
     v = points - np.array([x0, y0, z_ref])
     along = v @ d
     perp = v - along[:, None] * d
-    return np.linalg.norm(perp, axis=1) - r
+    rad = r + theta[5] * (points[:, 2] - z_ref) if len(theta) > 5 else r
+    return np.linalg.norm(perp, axis=1) - rad
 
 
 def jacobian(theta: np.ndarray, points: np.ndarray, z_ref: float) -> np.ndarray:
-    """Analytic d(residual)/d(theta), shape (N, 5)."""
-    x0, y0, a, b, _ = theta
+    """Analytic d(residual)/d(theta), shape (N, len(theta))."""
+    x0, y0, a, b = theta[:4]
     w = np.array([a, b, 1.0])
     w_norm = np.linalg.norm(w)
     d = w / w_norm
@@ -246,12 +273,14 @@ def jacobian(theta: np.ndarray, points: np.ndarray, z_ref: float) -> np.ndarray:
     perp = v - along[:, None] * d
     rho = np.maximum(np.linalg.norm(perp, axis=1), 1e-12)
     n_hat = perp / rho[:, None]
-    J = np.empty((len(points), N_PARAMS))
+    J = np.empty((len(points), len(theta)))
     J[:, 0] = -n_hat[:, 0]
     J[:, 1] = -n_hat[:, 1]
     J[:, 2] = -along * n_hat[:, 0] / w_norm
     J[:, 3] = -along * n_hat[:, 1] / w_norm
     J[:, 4] = -1.0
+    if len(theta) > 5:
+        J[:, 5] = -(points[:, 2] - z_ref)
     return J
 
 
@@ -396,16 +425,17 @@ def sandwich_covariance(
     A = J.T @ (J * w[:, None])
     scores = J * (w * e)[:, None]
     n = len(points)
+    n_par = len(theta)
     if groups is None:
         B = scores.T @ scores
-        corr = n / max(n - N_PARAMS, 1)
+        corr = n / max(n - n_par, 1)
     else:
         uniq, inv = np.unique(groups, return_inverse=True)
         G = len(uniq)
-        S = np.zeros((G, N_PARAMS))
+        S = np.zeros((G, n_par))
         np.add.at(S, inv.ravel(), scores)
         B = S.T @ S
-        corr = (G / max(G - 1, 1)) * ((n - 1) / max(n - N_PARAMS, 1))
+        corr = (G / max(G - 1, 1)) * ((n - 1) / max(n - n_par, 1))
     A_inv = np.linalg.pinv(A)
     return A_inv @ B @ A_inv * corr
 
@@ -419,7 +449,7 @@ def sector_ids(theta: np.ndarray, points: np.ndarray, z_ref: float, n_sectors: i
 
 
 def _angles(theta: np.ndarray, points: np.ndarray, z_ref: float) -> np.ndarray:
-    x0, y0, a, b, _ = theta
+    x0, y0, a, b = theta[:4]
     d = _direction(a, b)
     # orthonormal basis (u1, u2) of the plane perpendicular to the axis
     ref = np.array([1.0, 0.0, 0.0]) if abs(d[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
@@ -453,7 +483,7 @@ def band_points(points: np.ndarray, params: FitParams) -> np.ndarray:
 
 
 def _fit_once(
-    band: np.ndarray, params: FitParams, rng: np.random.Generator
+    band: np.ndarray, params: FitParams, rng: np.random.Generator, taper: bool = False
 ) -> tuple[np.ndarray, bool]:
     circle, _ = ransac_circle(
         band,
@@ -463,16 +493,18 @@ def _fit_once(
         max_radius=params.max_radius,
         rng=rng,
     )
-    theta0 = np.array([circle[0], circle[1], 0.0, 0.0, circle[2]])
+    theta0 = np.array([circle[0], circle[1], 0.0, 0.0, circle[2]] + ([0.0] if taper else []))
     theta, converged = refine_cylinder(
         band, theta0, params.breast_height, params.kernel_scale, params.lsq_iterations
     )
     return theta, converged
 
 
-def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> StemFit:
+def _fit_window(
+    points: np.ndarray, params: FitParams, seed_offset: int = 0, taper: bool = False
+) -> StemFit:
     """
-    Fit one stem and compute its DBH confidence interval.
+    Fit one stem in the window ``params.breast_height +- params.band_half_width``.
 
     :param points: (N, 3) height-normalized points of ONE tree instance.
     :param seed_offset: mixed into ``params.seed`` so each tree gets its own deterministic stream.
@@ -492,11 +524,13 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
         )
 
     rng = np.random.default_rng([params.seed, seed_offset])
-    theta, converged = _fit_once(band, params, rng)
+    theta, converged = _fit_once(band, params, rng, taper=taper)
 
-    x0, y0, a, b, r = theta
+    x0, y0, a, b, r = theta[:5]
     if not np.all(np.isfinite(theta)):
         raise FitError("refinement diverged (non-finite parameters)")
+    if taper and abs(theta[5]) > 0.05:
+        raise FitError(f"implausible taper {theta[5] * 200:.1f} cm/m of diameter")
     tilt = float(np.degrees(np.arctan(np.hypot(a, b))))
     if tilt > params.max_tilt_deg:
         raise FitError(f"fitted axis tilt {tilt:.1f} deg exceeds max {params.max_tilt_deg} deg")
@@ -585,7 +619,76 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
         tilt_deg=tilt,
         converged=converged,
         warnings=warnings,
+        band_half_width=params.band_half_width,
     )
+
+
+def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> StemFit:
+    """
+    Fit one stem and compute its DBH confidence interval.
+
+    With ``params.complete_partial_stems``, a stem whose arc coverage at breast height is below
+    ``params.min_arc_coverage`` (or that has too few points there) is refitted in a taller
+    window, in 0.1 m steps up to ``max_band_half_width``, so that a scanner that saw different
+    sides at different heights still yields (nearly) the whole circle. The taller fit includes
+    a taper term, so the result is still the diameter at breast height. The smallest window that
+    reaches ``min_arc_coverage`` is used, or the best one if it raises the coverage by at least
+    10 percentage points; otherwise the standard fit is kept.
+
+    :param points: (N, 3) height-normalized points of ONE tree instance.
+    :param seed_offset: mixed into ``params.seed`` so each tree gets its own deterministic stream.
+    :raises FitError: when the tree cannot be fitted (too few points, no valid circle,
+        implausible geometry). Callers record the reason and continue with the next tree.
+    """
+    if not params.complete_partial_stems:
+        return _fit_window(points, params, seed_offset)
+
+    base, base_error = None, None
+    try:
+        base = _fit_window(points, params, seed_offset)
+    except FitError as exc:
+        base_error = exc
+    if base is not None and base.arc_coverage >= params.min_arc_coverage:
+        return base
+
+    top = min(params.max_band_half_width, params.breast_height - 0.2)
+    n_base = len(band_points(np.asarray(points, dtype=float), params))
+    best = None
+    hw = params.band_half_width
+    while True:
+        hw = round(hw + 0.1, 3)
+        if hw > top + 1e-9:
+            break
+        wide = replace(params, band_half_width=hw)
+        if len(band_points(np.asarray(points, dtype=float), wide)) <= 1.1 * n_base:
+            continue  # the extra height holds no new points (e.g. above the segmented slice)
+        try:
+            cand = _fit_window(points, wide, seed_offset, taper=True)
+        except FitError:
+            continue
+        if cand.inlier_ratio < params.min_inlier_ratio:
+            continue
+        if best is None or cand.arc_coverage > best.arc_coverage:
+            best = cand
+        if cand.arc_coverage >= params.complete_target_coverage:
+            break
+
+    if best is not None and (base is None or best.arc_coverage >= base.arc_coverage + 0.10):
+        where = f"breast height +/-{best.band_half_width:.2f} m"
+        if base is None:
+            best.notes.append(
+                f"too few usable points at breast height ({base_error}); "
+                f"measured over {where} with a taper term"
+            )
+        else:
+            best.notes.append(
+                f"seen from one side at breast height (arc coverage {base.arc_coverage:.0%}); "
+                f"completed to {best.arc_coverage:.0%} using {where} with a taper term"
+            )
+        return best
+    if base is None:
+        raise base_error  # type: ignore[misc]
+    return base
 
 
 def bootstrap_dbh(

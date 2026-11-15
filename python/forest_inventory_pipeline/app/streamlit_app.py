@@ -508,6 +508,26 @@ def sidebar_fit() -> FitParams | None:
         )
         relw = st.slider("Max CI width (% of DBH)", 1, 100, 25, 1)
         inl = st.slider("Min inlier ratio", 0.0, 1.0, 0.3, 0.05)
+    with s.expander("Partly seen stems"):
+        complete = st.toggle(
+            "Complete partly seen stems",
+            False,
+            help="For stems seen from one side at breast height (or with too few points there), "
+            "measure over a taller window so that other heights, seen from other sides, "
+            "complete the circle. A taper term keeps the DBH at breast height. Helps when the "
+            "scanner moved; cannot help if the same side is hidden at every height.",
+        )
+        max_hw = st.slider(
+            "Tallest window (± m)" if not U.feet else "Tallest window (± ft)",
+            0.3 if not U.feet else 1.0,
+            1.2 if not U.feet else 4.0,
+            0.75 if not U.feet else 2.5,
+            0.05 if not U.feet else 0.1,
+            disabled=not complete,
+            help="How far above and below breast height the window may grow.",
+        )
+        if U.feet:
+            max_hw = float(to_metres(max_hw, U.unit))
     with s.expander("Merged trees"):
         split = st.toggle(
             "Split clusters with several stems",
@@ -539,6 +559,8 @@ def sidebar_fit() -> FitParams | None:
             n_bootstrap=nboot,
             min_arc_coverage=cov,
             ovality_sd=ovality / 100,
+            complete_partial_stems=complete,
+            max_band_half_width=max(max_hw, hw),
             max_relative_ci_width=relw / 100,
             min_inlier_ratio=inl,
             split_stems=split,

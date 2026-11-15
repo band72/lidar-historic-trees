@@ -35,6 +35,8 @@ fit:
   max_tilt_deg: 22.5
   ransac_iterations: 2000
   min_arc_coverage: 0.6   # quality flags: stems scanned from fewer sides than this get a warning
+  complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
+  max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems
   max_relative_ci_width: 0.25
   min_inlier_ratio: 0.3

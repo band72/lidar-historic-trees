@@ -51,3 +51,13 @@ def test_feet_display(app):
     assert metric(app, "Basal area").value.endswith("ft²/ac")
     bh = next(s for s in app.sidebar.slider if s.label.startswith("Breast height"))
     assert bh.label == "Breast height (ft)" and bh.value == 4.5
+
+
+def test_complete_partial_toggle(app):
+    app.sidebar.number_input[0].set_value(8)
+    app.button[0].click().run()
+    toggle = next(t for t in app.sidebar.toggle if t.label == "Complete partly seen stems")
+    assert toggle.value is False
+    toggle.set_value(True).run()
+    assert not app.exception and not app.error
+    assert metric(app, "Trees fitted").value.split(" / ")[0] != "0"
