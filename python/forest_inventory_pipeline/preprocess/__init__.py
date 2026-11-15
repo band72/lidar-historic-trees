@@ -1,2 +1,2 @@
 from .ground_segmentation import segment_ground
-from .height_normalization import normalize_height
+from .height_normalization import normalize_height, interpolate_ground_z

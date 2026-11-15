@@ -330,5 +330,234 @@ def dbh(
         render([geoms])
 
 
+#### Inventory: robust breast-height DBH with confidence intervals, plugins, exports
+
+
+def _parse_kv(items: list[str] | None, what: str) -> dict[str, dict[str, str]]:
+    """Parse repeated ``name.key=value`` options into {name: {key: value}}."""
+    out: dict[str, dict[str, str]] = {}
+    for item in items or []:
+        if "=" not in item or "." not in item.split("=", 1)[0]:
+            raise typer.BadParameter(f"{what} option must look like name.key=value, got {item!r}")
+        lhs, value = item.split("=", 1)
+        name, key = lhs.split(".", 1)
+        out.setdefault(name, {})[key] = value
+    return out
+
+
+@cli.command()
+def inventory(
+    input_fp: Annotated[Path, typer.Argument(metavar="INPUT", exists=True, help="Point cloud file (.ply .pcd .las .laz .npy .txt .csv), ROS bag file or ROS2 bag directory.")],
+    output_dir: Annotated[Path, typer.Option("--output", "-o", file_okay=False, help="Output directory for exports and the log file.")] = Path("fip_output"),
+    config_fp: Annotated[Optional[Path], typer.Option("--config", "-c", exists=True, dir_okay=False, help="YAML/JSON with sections ground, segment, fit (keys = parameter names).")] = None,
+    export: Annotated[list[str], typer.Option("--export", "-e", help="Exporter(s) to run; repeatable. See `fip plugins`.")] = ["csv", "dxf"],
+    export_option: Annotated[Optional[list[str]], typer.Option("--export-option", "-E", help="Exporter option name.key=value, e.g. dxf.z_mode=plan. Repeatable.")] = None,
+    reader: Annotated[Optional[str], typer.Option("--reader", help="Force a reader by name (default: by file extension).")] = None,
+    reader_option: Annotated[Optional[list[str]], typer.Option("--reader-option", "-R", help="Reader option key=value, e.g. topic=/cloud_registered. Repeatable.")] = None,
+    plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s) to load.")] = None,
+    breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height (m).")] = None,
+    confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
+    ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
+    model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd (m); calibrate with `fip calibrate`.")] = None,
+    log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
+):
+    """
+    Full inventory: ground segmentation, height normalization, tree segmentation,
+    breast-height DBH with confidence intervals, metric plugins and exports (CSV, DXF, ...).
+    """
+    import sys
+    from .errors import FIPError
+    from . import inventory as inv
+    from .plugins import load_plugins
+    from .traits.dbh.robust_fit import FitParams
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_file = output_dir / "fip.log"
+    logger.configure(level=log_level, log_file=log_file)
+    logger.info(f"fip inventory {input_fp} -> {output_dir} (log: {log_file})")
+    try:
+        load_plugins(extra_dirs=plugin_dir or [])
+        config: dict = load_yaml_or_json(config_fp) if config_fp else {}  # type: ignore
+        unknown = set(config) - {"ground", "segment", "fit"}
+        if unknown:
+            raise typer.BadParameter(f"unknown config section(s) {sorted(unknown)}; expected ground, segment, fit")
+        fit_cfg = dict(config.get("fit", {}))
+        for key, val in dict(breast_height=breast_height, confidence=confidence, ci_method=ci_method, model_sd=model_sd).items():
+            if val is not None:
+                fit_cfg[key] = val
+        try:
+            gp = inv.GroundParams(**config.get("ground", {}))
+            sp = inv.SegmentParams(**config.get("segment", {}))
+            fp = FitParams(**fit_cfg)
+        except TypeError as exc:
+            raise typer.BadParameter(f"bad config key: {exc}") from exc
+        for issue in inv.check_band_inside_slice(fp, sp):
+            logger.warning(issue)
+        # validate exporters and their options before any heavy processing
+        from .plugins import registry
+
+        export_opts = _parse_kv(export_option, "export")
+        for name in set(export) | set(export_opts):
+            exp = registry.exporter(name)
+            exp.resolve_options(export_opts.get(name, {}))
+        stray = set(export_opts) - set(export)
+        if stray:
+            logger.warning(f"options given for exporter(s) {sorted(stray)} that are not in --export; ignored")
+
+        reader_opts = {}
+        for item in reader_option or []:
+            if "=" not in item:
+                raise typer.BadParameter(f"reader option must be key=value, got {item!r}")
+            k, v = item.split("=", 1)
+            reader_opts[k] = v
+        xyz = inv.load_points(input_fp, reader=reader, **reader_opts)
+        ground, non_ground = inv.segment_ground(xyz, gp)
+        normalized = inv.normalize_heights(ground, non_ground, gp)
+        pts, labels = inv.segment_trees(normalized, sp)
+        trees = inv.group_trees(pts, labels, sp.min_tree_points)
+        if not trees:
+            raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
+        records = inv.fit_trees(trees, ground, fp, gp, keep_points=False)
+        ctx = inv.context_for(str(input_fp), fp, ground=gp, segment=sp)
+        written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
+        s = inv.summarize(records)
+        logger.info(
+            f"done: {s['ok']} ok, {s['warning']} warnings, {s['failed']} failed; "
+            f"mean DBH {s['mean_dbh'] * 100:.1f} cm; basal area {s['basal_area_m2']:.2f} m^2"
+        )
+        for w in written:
+            logger.info(f"wrote {w}")
+    except (FIPError, typer.BadParameter) as exc:
+        logger.error(str(exc))
+        logger.debug("details", exc_info_str(exc))
+        sys.exit(2)
+    except Exception:
+        logger.exception("unexpected failure; full traceback in the log file")
+        sys.exit(1)
+
+
+def exc_info_str(exc: BaseException) -> str:
+    import traceback
+
+    return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+
+
+@cli.command()
+def calibrate(
+    trees_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="CSV written by `fip inventory`.")],
+    reference_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Field data with columns x, y, dbh.")],
+    dbh_unit: Annotated[str, typer.Option(help="Unit of reference dbh: auto, m or cm.")] = "auto",
+    max_distance: Annotated[float, typer.Option(help="Max stem position mismatch (m) for matching.")] = 0.5,
+    current_model_sd: Annotated[float, typer.Option(help="model_sd used for TREES_CSV (m).")] = 0.005,
+):
+    """Estimate fit.model_sd from field-measured reference trees."""
+    import csv as _csv
+    import sys
+    import numpy as np
+    from .calibration import calibrate as _calibrate, read_reference_csv
+    from .errors import FIPError
+    from .records import TreeRecord
+
+    try:
+        recs = []
+        with trees_csv.open(newline="", encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                def f(k):
+                    return float(row[k]) if row.get(k) not in (None, "") else float("nan")
+                recs.append(TreeRecord(
+                    tree_id=int(row["tree_id"]), status=row["status"], x=f("x"), y=f("y"),
+                    ground_z=f("ground_z"), breast_height=f("breast_height"), bh_elevation=f("bh_elevation"),
+                    n_points=int(row["n_points"]), dbh=f("dbh"), dbh_se=f("dbh_se"),
+                    ci_low=f("ci_low"), ci_high=f("ci_high"),
+                ))
+        res = _calibrate(recs, read_reference_csv(reference_csv, dbh_unit), current_model_sd, max_distance)
+    except (FIPError, KeyError) as exc:
+        logger.error(f"calibration failed: {exc}")
+        sys.exit(2)
+    logger.info(
+        f"matched {res.n_matched}/{res.n_reference} reference trees: bias {res.bias * 100:+.2f} cm, "
+        f"RMSE {res.rmse * 100:.2f} cm, CI coverage {res.coverage:.0%}"
+    )
+    logger.info(f"suggested fit.model_sd = {res.model_sd:.4f} m  (re-run with --model-sd {res.model_sd:.4f})")
+    if abs(res.bias) > 2 * res.rmse / np.sqrt(res.n_matched) and abs(res.bias) > 0.005:
+        logger.warning("bias is significant; check breast_height and ground segmentation before trusting the CI")
+
+
+@cli.command()
+def plugins(
+    plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s).")] = None,
+):
+    """List available readers, exporters and metrics, and any plugins that failed to load."""
+    from rich.table import Table
+    from .plugins import load_plugins
+    from .utils.rich_console import console
+
+    reg = load_plugins(extra_dirs=plugin_dir or [])
+    for title, items in (("Readers", reg.readers), ("Exporters", reg.exporters), ("Metrics", reg.metrics)):
+        table = Table(title=title)
+        table.add_column("name")
+        table.add_column("description")
+        table.add_column("options")
+        for name, obj in sorted(items.items()):
+            opts = ", ".join(f"{o.name}={o.default!r}" for o in getattr(obj, "options", ()))
+            if hasattr(obj, "columns") and not opts:
+                opts = "columns: " + ", ".join(obj.columns)
+            table.add_row(name, obj.description, opts)
+        console.print(table)
+    for src, err in reg.load_errors.items():
+        logger.warning(f"failed plugin {src}: {err}")
+
+
+@cli.command("demo-data")
+def demo_data(
+    output: Annotated[Path, typer.Argument(help="Where to write the synthetic plot (.npy or .ply).")] = Path("demo_plot.ply"),
+    n_trees: Annotated[int, typer.Option(help="Number of trees.")] = 25,
+    seed: Annotated[int, typer.Option(help="Random seed.")] = 0,
+):
+    """Write a synthetic forest plot with known DBH (truth CSV alongside) for testing."""
+    import csv as _csv
+    import numpy as np
+    from .synthetic import make_plot
+
+    plot = make_plot(n_trees=n_trees, seed=seed)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.suffix == ".npy":
+        np.save(output, plot.points)
+    else:
+        Cloud.from_points(plot.points).write(output)
+    truth_fp = output.with_name(output.stem + "_truth.csv")
+    with truth_fp.open("w", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=list(plot.truth[0]))
+        w.writeheader()
+        w.writerows(plot.truth)
+    logger.info(f"wrote {output} ({len(plot.points):,} points) and {truth_fp}")
+
+
+@cli.command()
+def app(
+    port: Annotated[int, typer.Option(help="Port for the web interface.")] = 8501,
+    plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s).")] = None,
+):
+    """Launch the interactive web interface (needs the [app] extra)."""
+    import os
+    import subprocess
+    import sys
+
+    try:
+        import streamlit  # noqa: F401
+    except ImportError:
+        logger.error("the web app needs streamlit: pip install 'forest_inventory_pipeline[app]'")
+        sys.exit(2)
+    script = Path(__file__).parent / "app" / "streamlit_app.py"
+    env = dict(os.environ)
+    if plugin_dir:
+        from .plugins.registry import ENV_VAR
+
+        env[ENV_VAR] = os.pathsep.join([str(p.resolve()) for p in plugin_dir] + ([env[ENV_VAR]] if env.get(ENV_VAR) else []))
+    cmd = [sys.executable, "-m", "streamlit", "run", str(script), "--server.port", str(port)]
+    logger.info("starting:", " ".join(cmd))
+    sys.exit(subprocess.call(cmd, env=env))
+
+
 if __name__ == "__main__":
     cli()

@@ -139,9 +139,45 @@ class Logger:
         return formatter
 
     def add_file_handler(self, log_file_fp: Path, level: int = logging.DEBUG):
-        file_handler = logging.FileHandler(log_file_fp.as_posix())
+        """Attach a file handler. Idempotent per path: re-adding the same file is a no-op."""
+        self._check_existence()
+        log_file_fp = Path(log_file_fp).resolve()
+        for handler in self._logger.handlers:
+            if isinstance(handler, logging.FileHandler) and Path(handler.baseFilename) == log_file_fp:
+                handler.setLevel(level)
+                return handler
+        log_file_fp.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_file_fp.as_posix(), encoding="utf-8")
         file_handler.setLevel(level)
-        self.add_handler(file_handler)
+        self.add_handler(
+            file_handler,
+            formatter=self._create_formatter(
+                "[{asctime} | {levelname:<7} | {module}:{funcName}:{lineno}] {message}"
+            ),
+        )
+        return file_handler
+
+    def set_console_level(self, level: str | int):
+        """Change the console verbosity: one of trace, debug, info, warn or a logging int."""
+        self._check_existence()
+        if isinstance(level, str):
+            level = log_level_mapping.get(level.lower(), logging.INFO)
+        for handler in self._logger.handlers:
+            if isinstance(handler, RichHandler):
+                handler.setLevel(level)
+
+    def configure(self, level: str | int = "info", log_file: Path | None = None):
+        """One-call setup used by entry points (CLI command, web app)."""
+        self.set_console_level(level)
+        if log_file is not None:
+            self.add_file_handler(Path(log_file), level=5)
+        return self
+
+    def exception(self, *args):
+        """Log at error level with the current exception's traceback attached."""
+        self._check_existence()
+        message = _string_from_args(*args)
+        return self._logger.exception(message, stacklevel=2)
 
     def add_handler(self, handler, format: bool = True, formatter=None):
         """

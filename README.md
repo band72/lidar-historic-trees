@@ -110,6 +110,67 @@ To run a DBH estimation experiment, `cd` into the `docker/` folder and then run:
 docker compose run fip_dbh
 ```
 
+## Tree inventory: DBH with confidence intervals
+
+`fip inventory` and the web app (`fip app`) extend the pipeline into a full inventory tool. They find trees, fit each stem at breast height, and report **DBH with a confidence interval**. They also export CSV, DXF and other formats through plugins.
+
+```bash
+pip install -e ".[app,las]"          # web app + LAS/LAZ input; add `rosbags` for ROS bags
+fip demo-data demo/plot.ply          # synthetic plot with known DBH (+ demo/plot_truth.csv)
+fip inventory demo/plot.ply -o out   # -> out/trees.csv, out/trees.dxf, out/fip.log
+fip app                              # interactive interface at http://localhost:8501
+```
+
+### How it works
+
+1. **Read.** PLY, PCD, XYZ, LAS/LAZ, NPY, text/CSV, and ROS1/ROS2 bags (`sensor_msgs/PointCloud2`).
+   Bags must contain clouds that are already in a world frame, such as a SLAM-registered topic. Alternatively, pass `-R target_frame=map` and the reader registers each scan using `/tf` and `/tf_static` from the bag. Raw scans in a sensor frame are refused, because stacking them without poses would smear the stems.
+2. **Ground.** CSF, followed by a refinement step that removes stem bases from the terrain model. Without it, the terrain is lifted under trees by about 0.4 m, which moves the "1.3 m" band up the stem and biases DBH on tapered stems.
+3. **Trees.** quickshift++ instance segmentation, as in the paper.
+4. **Stems.** Each stem is fitted in a band at breast height (1.3 m ± 0.25 m by default) in two steps: 3-point circle RANSAC, then a robust (Geman-McClure) Levenberg-Marquardt cylinder fit. The cylinder has 5 parameters (center, tilt, radius), so there is no gauge freedom and the covariance is well-defined.
+5. **Confidence interval.** DBH ± CI comes from one of two methods:
+   - `analytic` (the default and fast): a cluster-robust sandwich covariance that uses angular sectors of the stem as clusters. This accounts for correlated residuals from bark and non-circular stems.
+   - `bootstrap`: resamples angular sectors. Slower, but makes fewer assumptions.
+
+   Both methods add a **systematic term `model_sd`** in quadrature, for error that the point cloud itself cannot reveal. Calibrate it against field data with `fip calibrate trees.csv field.csv`.
+6. **Quality flags.** Each tree is marked `ok`, `warning` or `failed`, and the reason is recorded. Warnings cover one-sided scans (arc coverage), wide CIs and clutter. A failed tree never aborts the run.
+
+On the synthetic demo plots, DBH RMSE is about 0.25 cm and the 95% CI covers the true DBH for every matched tree. Real data will have larger errors, so calibrate.
+
+### Outputs
+
+- **CSV**: one row per tree. Columns are `x, y, ground_z, bh_elevation` (real-world elevation of the DBH plane), `dbh, ci_low, ci_high, dbh_se` and quality metrics, followed by plugin columns such as basal area.
+- **DXF**: one circle per tree, with diameter equal to the DBH, lying in a horizontal plane. The circle is placed at the actual DBH elevation (`-E dxf.z_mode=elevation`), at height above ground (`height`), or flat at z = 0 (`plan`). The drawing also contains dashed CI circles, labels, the stem line from the ground to breast height, and XDATA (app id `FIP`). Units are metres.
+
+### Web app
+
+The sidebar has three sections:
+
+- **Point cloud**: a file path (including bag files and folders), an upload, or the demo plot.
+- **Find trees**: ground and segmentation parameters. These steps are slow, so they run only when you press the button.
+- **Fit stems (live)**: sliders for breast height, band, confidence level, CI method, systematic uncertainty and quality thresholds. Every change refits all trees instantly.
+
+The main area has five tabs:
+
+- **Map**: tree positions, with status shown by color, shape and label.
+- **Tree detail**: the breast-height slice with the fitted circle and CI rings, plus a 3D view of the tree.
+- **Table & export**: the results table, with downloads for every exporter.
+- **Calibration**: upload field DBH measurements and apply the suggested `model_sd`.
+- **Log**.
+
+### Plugins
+
+Readers, exporters and per-tree metrics are plugins. CSV, DXF and the basal-area metric are built-in plugins. See [`plugins/README.md`](plugins/README.md), and the GeoJSON example there:
+
+```bash
+fip plugins --plugin-dir plugins
+fip inventory cloud.laz --plugin-dir plugins -e csv -e dxf -e geojson
+```
+
+### Logging and errors
+
+Every run writes a detailed log (`out/fip.log`, or `fip_output/app.log` for the app). The log includes the source module and line for each entry, and a full traceback for any unexpected error. Invalid parameters, unreadable inputs and stage failures exit with code 2 and a clear message. Use `--log-level debug` for more console output.
+
 ## Publication
 
 If you use our code in your academic work, please cite the corresponding [paper](https://www.ipb.uni-bonn.de/pdfs/malladi2024icra.pdf):

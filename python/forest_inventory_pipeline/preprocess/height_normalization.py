@@ -23,8 +23,71 @@ import numpy as np
 from scipy.spatial import KDTree
 
 from ..cloud import Cloud
+from ..errors import InputDataError, ParameterError
 from ..utils import logger
 from ..utils.decorators import log_scalars_in_arguments
+
+
+def interpolate_ground_z(
+    ground_xyz: np.ndarray,
+    query_xy: np.ndarray,
+    k: int = 5,
+    p: float = 2,
+    rmax: float = 10.0,
+    kdtree: KDTree | None = None,
+) -> np.ndarray:
+    """
+    Ground elevation at ``query_xy`` via k-nearest-neighbour Inverse Distance Weighting.
+
+    Queries with no ground point within ``rmax`` fall back to the single nearest ground point.
+
+    :param ground_xyz: (N, 3) ground points.
+    :param query_xy: (M, 2) or (M, 3) query positions; only x, y are used.
+    :param kdtree: optional prebuilt KDTree over ``ground_xyz[:, :2]`` to avoid rebuilding.
+    :return: (M,) interpolated ground z.
+    """
+    ground_xyz = np.asarray(ground_xyz, dtype=float)
+    query_xy = np.asarray(query_xy, dtype=float)
+    if ground_xyz.ndim != 2 or ground_xyz.shape[1] < 3 or len(ground_xyz) == 0:
+        raise InputDataError("ground cloud is empty; cannot interpolate ground elevation")
+    if query_xy.ndim != 2 or query_xy.shape[1] < 2:
+        raise InputDataError(f"query points must be (M, 2+), got shape {query_xy.shape}")
+    if k < 1:
+        raise ParameterError(f"IDW k must be >= 1, got {k}")
+    if p <= 0:
+        raise ParameterError(f"IDW power p must be > 0, got {p}")
+    if len(query_xy) == 0:
+        return np.empty((0,), dtype=float)
+
+    search_z = ground_xyz[:, 2]
+    k = min(k, len(ground_xyz))
+    if kdtree is None:
+        kdtree = KDTree(data=ground_xyz[:, :2])
+    dist, idx = kdtree.query(query_xy[:, :2], k=k, p=2, distance_upper_bound=rmax, workers=-1)
+    dist = np.asarray(dist, dtype=float).reshape(len(query_xy), k)
+    idx = np.asarray(idx).reshape(len(query_xy), k)
+
+    invalid = np.flatnonzero(np.isinf(dist[:, 0]))
+    if invalid.size:
+        logger.debug(
+            f"no ground neighbour within rmax={rmax} for {invalid.size} points;"
+            " using the single closest ground point"
+        )
+        patch_dist, patch_idx = kdtree.query(query_xy[invalid, :2], k=1, p=2, workers=-1)
+        dist[invalid, 0] = patch_dist
+        idx[invalid, 0] = patch_idx
+
+    # out-of-range neighbours have dist=inf -> weight 0; their idx==len(search_z) is clamped
+    clean_idx = np.where(idx >= len(search_z), 0, idx)
+    safe_dist = np.maximum(dist, 1e-12)
+    weights = 1.0 / np.power(safe_dist, p)
+    weights[np.isinf(dist)] = 0.0
+    z_interp = np.sum(weights * search_z[clean_idx], axis=1) / np.sum(weights, axis=1)
+
+    # exact hits: take that ground point's z directly
+    exact = dist[:, 0] == 0
+    z_interp[exact] = search_z[clean_idx[exact, 0]]
+    return z_interp
 
 
 @log_scalars_in_arguments()
@@ -44,40 +107,11 @@ def normalize_height(
     :param rmax: max distance knn queries.
     :return: the normalized version of non_ground_cloud.
     """
-    search_xy_points = ground_cloud.points[:, :2]
-    search_z = ground_cloud.points[:, 2]
-    query_xy_points = non_ground_cloud.points[:, :2]
-    # search for z of query xy points corresponding to search xyz
-    logger.debug("Fitting kdtree to point cloud")
-    kdtree = KDTree(data=search_xy_points)
-    logger.debug("Fit complete")
-    dist, idx = kdtree.query(query_xy_points, k=k, p=2, distance_upper_bound=rmax, workers=-1)
-    logger.debug("query complete.")
-
-    invalid_idx = np.flatnonzero(dist[:, 0] == np.inf)
-    if invalid_idx.size:
-        logger.debug(
-            f"no nearest neighbour withing range for {invalid_idx.size} points,"
-            " taking only closest neighbor for elevation"
-        )
-        patch_dist, patch_idx = kdtree.query(query_xy_points[invalid_idx], k=1, p=2, workers=-1)
-        dist[invalid_idx, 0] = patch_dist
-        idx[invalid_idx, 0] = patch_idx
-
-    # dist can be 0. weight should be np.inf. raises a warning tho.
-    epsilon = 1e-8
-    non_zero_dist = dist
-    non_zero_dist[dist == 0] += epsilon
-    weights = 1 / np.power(non_zero_dist, p)
-    weights[dist == 0] = np.inf
-    clean_idx = idx.copy()
-    # the dist for these values will be inf, so weights = 0
-    clean_idx[idx == len(search_z)] = 0
-
-    z_interp = np.sum(weights * search_z[clean_idx], axis=1) / np.sum(weights, axis=1)
-    z_interp[dist[:, 0] == 0] = search_z[idx[dist[:, 0] == 0][:, 0]]
+    logger.debug("Interpolating ground elevation under", non_ground_cloud.num_points, "points")
+    z_interp = interpolate_ground_z(
+        ground_cloud.points, non_ground_cloud.points, k=k, p=p, rmax=rmax
+    )
     logger.debug("Knn IDW interpolation complete.")
-    # now actually normalize the height
     normalized_cloud = non_ground_cloud.clone()
     normalized_cloud.points[:, 2] = normalized_cloud.points[:, 2] - z_interp
     return normalized_cloud
