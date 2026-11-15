@@ -26,17 +26,18 @@ All three are importable from `forest_inventory_pipeline.plugins`. Built-in exam
 ```python
 from forest_inventory_pipeline.plugins import Exporter, OptionSpec, atomic_write, register_exporter
 
+
 @register_exporter
 class MyExporter(Exporter):
-    name = "mine"            # used as --export mine
+    name = "mine"  # used as --export mine
     extension = ".txt"
     description = "One line per tree"
     options = (OptionSpec("unit", "cm", "DBH unit", choices=("cm", "m")),)
 
     def export(self, trees, path, context, **options):
-        opts = self.resolve_options(options)          # fills defaults, validates, coerces CLI strings
+        opts = self.resolve_options(options)  # fills defaults, validates, coerces CLI strings
         scale = 100 if opts["unit"] == "cm" else 1
-        with atomic_write(path) as fh:                # never leaves a half-written file
+        with atomic_write(path) as fh:  # never leaves a half-written file
             for t in trees:
                 if t.fitted:
                     fh.write(f"{t.tree_id} {t.dbh * scale:.2f}\n")
@@ -50,6 +51,7 @@ CLI with `-E mine.unit=m`.
 
 ```python
 from forest_inventory_pipeline.plugins import TreeMetric, register_metric
+
 
 @register_metric
 class Circumference(TreeMetric):
@@ -70,6 +72,7 @@ import numpy as np
 from forest_inventory_pipeline.errors import InputDataError
 from forest_inventory_pipeline.plugins import Reader, register_reader
 
+
 @register_reader
 class E57Reader(Reader):
     name = "e57"
@@ -78,6 +81,7 @@ class E57Reader(Reader):
 
     def read(self, path, **options):
         import pye57
+
         data = pye57.E57(str(path)).read_scan(0, ignore_missing_fields=True)
         xyz = np.c_[data["cartesianX"], data["cartesianY"], data["cartesianZ"]]
         if len(xyz) == 0:

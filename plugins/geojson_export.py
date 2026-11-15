@@ -45,14 +45,25 @@ class GeoJsonExporter(Exporter):
             row = t.to_row()
             props = {
                 k: _num(row[k])
-                for k in ("tree_id", "status", "dbh", "ci_low", "ci_high", "confidence", "ground_z", "message")
+                for k in (
+                    "tree_id",
+                    "status",
+                    "dbh",
+                    "ci_low",
+                    "ci_high",
+                    "confidence",
+                    "ground_z",
+                    "message",
+                )
             }
             props.update({k: _num(v) for k, v in t.extra.items()})
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "Point", "coordinates": [t.x, t.y, t.bh_elevation]},
-                "properties": props,
-            })
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [t.x, t.y, t.bh_elevation]},
+                    "properties": props,
+                }
+            )
         doc = {"type": "FeatureCollection", "features": features}
         if opts["crs"]:
             doc["crs"] = {"type": "name", "properties": {"name": opts["crs"]}}

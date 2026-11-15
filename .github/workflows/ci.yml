@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: System libraries for Open3D
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgomp1
+
+      - name: Install (builds the quickshift++ extension)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[test,app,las]" rosbags ruff
+
+      - name: Lint new modules
+        run: >
+          ruff check
+          python/forest_inventory_pipeline/app
+          python/forest_inventory_pipeline/plugins
+          python/forest_inventory_pipeline/inventory.py
+          python/forest_inventory_pipeline/records.py
+          python/forest_inventory_pipeline/errors.py
+          python/forest_inventory_pipeline/calibration.py
+          python/forest_inventory_pipeline/synthetic.py
+          python/forest_inventory_pipeline/traits/dbh/robust_fit.py
+          tests/inventory plugins
+
+      - name: Tests
+        env:
+          LOG_LEVEL: warn
+        # the package lives under python/, so this imports the installed (built) copy
+        run: python -m pytest -q tests -p no:cacheprovider
+
+      - name: CLI smoke test
+        run: |
+          cd "$RUNNER_TEMP"
+          fip demo-data demo/plot.ply --n-trees 10
+          fip inventory demo/plot.ply -o out --plugin-dir "$GITHUB_WORKSPACE/plugins" -e csv -e dxf -e geojson
+          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson

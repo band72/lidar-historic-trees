@@ -133,9 +133,10 @@ fip app                              # interactive interface at http://localhost
    - `bootstrap`: resamples angular sectors. Slower, but makes fewer assumptions.
 
    Both methods add a **systematic term `model_sd`** in quadrature, for error that the point cloud itself cannot reveal. Calibrate it against field data with `fip calibrate trees.csv field.csv`.
-6. **Quality flags.** Each tree is marked `ok`, `warning` or `failed`, and the reason is recorded. Warnings cover one-sided scans (arc coverage), wide CIs and clutter. A failed tree never aborts the run.
+6. **Merged trees.** Segmentation can merge a small tree into a large neighbour's cluster, and fitting would then silently measure only the bigger stem. With `fit.split_stems` (on by default), separate stems in the breast-height band are found with DBSCAN (`fit.stem_gap`) and each is fitted. Duplicate estimates of one stem, split across two clusters, are removed.
+7. **Quality flags.** Each tree is marked `ok`, `warning` or `failed`, and the reason is recorded. Warnings cover one-sided scans (arc coverage), wide CIs and clutter. A failed tree never aborts the run.
 
-On the synthetic demo plots, DBH RMSE is about 0.25 cm and the 95% CI covers the true DBH for every matched tree. Real data will have larger errors, so calibrate.
+Results on synthetic demo plots with known truth (5 plots × 30 trees): all 150 trees found, no false positives, DBH RMSE about 0.25 cm, and the 95% CI covers the true DBH for every tree. Real data will have larger errors, so calibrate.
 
 ### Outputs
 

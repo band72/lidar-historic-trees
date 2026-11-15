@@ -373,6 +373,59 @@ def group_trees(points: np.ndarray, labels: np.ndarray, min_points: int) -> dict
     return trees
 
 
+def split_multi_stem(
+    trees: dict[int, np.ndarray], fit: FitParams
+) -> tuple[dict[int, np.ndarray], dict[int, int]]:
+    """
+    Split clusters that contain more than one stem at breast height.
+
+    Instance segmentation can merge a small tree into a larger neighbour's cluster
+    (seen at the default quickshift++ settings); fitting would then silently measure only
+    the dominant stem. Here the cluster's breast-height band is clustered in XY with
+    DBSCAN (``eps = fit.stem_gap``); every component with at least ``min_band_points``
+    becomes its own stem, and the cluster's other points go to the nearest stem in XY.
+
+    :return: (new trees dict, {new_id: parent_cluster_id}) - the largest stem keeps the
+        original id; extra stems get ids above every existing id.
+    """
+    from sklearn.cluster import DBSCAN
+
+    out: dict[int, np.ndarray] = {}
+    parent: dict[int, int] = {}
+    next_id = (max(trees) + 1) if trees else 0
+    n_split = 0
+    for tid, pts in sorted(trees.items()):
+        in_band = np.abs(pts[:, 2] - fit.breast_height) <= fit.band_half_width
+        band = pts[in_band]
+        if len(band) < 2 * fit.min_band_points:
+            out[tid] = pts
+            continue
+        labels = DBSCAN(eps=fit.stem_gap, min_samples=5).fit_predict(band[:, :2])
+        comps = [
+            c for c in np.unique(labels) if c >= 0 and np.sum(labels == c) >= fit.min_band_points
+        ]
+        if len(comps) <= 1:
+            out[tid] = pts
+            continue
+        comps.sort(key=lambda c: -np.sum(labels == c))
+        centers = np.array([np.median(band[labels == c, :2], axis=0) for c in comps])
+        # every point of the cluster goes to the nearest stem centre in XY
+        owner = np.argmin(np.linalg.norm(pts[:, None, :2] - centers[None, :, :], axis=2), axis=1)
+        for rank in range(len(comps)):
+            new_id = tid if rank == 0 else next_id
+            if rank:
+                next_id += 1
+            out[new_id] = pts[owner == rank]
+            parent[new_id] = tid
+        n_split += 1
+        logger.debug(f"cluster {tid}: {len(comps)} stems at breast height, split")
+    if n_split:
+        logger.info(
+            f"split {n_split} clusters containing several stems -> {len(out) - len(trees)} extra stems"
+        )
+    return out, parent
+
+
 def fit_trees(
     trees: dict[int, np.ndarray],
     ground: np.ndarray,
@@ -394,6 +447,9 @@ def fit_trees(
         registry.metrics[m] for m in (metrics if metrics is not None else sorted(registry.metrics))
     ]
     ground_tree = KDTree(ground[:, :2])
+    parents: dict[int, int] = {}
+    if fit.split_stems:
+        trees, parents = split_multi_stem(trees, fit)
     records: list[TreeRecord] = []
     t0 = time.perf_counter()
     n = len(trees)
@@ -437,6 +493,11 @@ def fit_trees(
             n_band_points=int(len(band)),
             points=pts if keep_points else None,
         )
+        rec.extra["cluster_id"] = parents.get(tid, tid)
+        if sf is None and parents.get(tid, tid) != tid:
+            # an extra stem split off a cluster that does not fit is a branch/clutter fragment
+            logger.debug(f"split stem {tid} (cluster {parents[tid]}) dropped: {reason}")
+            continue
         if sf is None:
             rec.message = reason
             logger.debug(f"tree {tid}: failed - {reason}")
@@ -471,12 +532,44 @@ def fit_trees(
         records.append(rec)
     if progress:
         progress(1.0, "fitting done")
+    records = dedupe_stems(records)
     s = summarize(records)
     logger.info(
         f"fitted {s['ok']} ok, {s['warning']} with warnings, {s['failed']} failed "
         f"of {s['total']} instances in {time.perf_counter() - t0:.1f}s"
     )
     return records
+
+
+def dedupe_stems(records: list[TreeRecord]) -> list[TreeRecord]:
+    """
+    Drop duplicate estimates of one stem (its points were split across two clusters).
+
+    Two real stems cannot overlap at breast height, so when one fitted centre lies inside
+    another fitted circle, only the estimate with more band inliers is kept.
+    """
+    fitted = [r for r in records if r.fitted]
+    if len(fitted) < 2:
+        return records
+    xy = np.array([[r.x, r.y] for r in fitted])
+    radius = np.array([r.dbh / 2 for r in fitted])
+    support = np.array([r.n_band_points * r.inlier_ratio for r in fitted])
+    tree = KDTree(xy)
+    drop: set[int] = set()
+    for i in np.argsort(-support):
+        if fitted[i].tree_id in drop:
+            continue
+        for j in tree.query_ball_point(xy[i], r=float(radius.max())):
+            if j == i or fitted[j].tree_id in drop or support[j] > support[i]:
+                continue
+            if np.linalg.norm(xy[i] - xy[j]) < max(radius[i], radius[j]):
+                drop.add(fitted[j].tree_id)
+                logger.debug(
+                    f"tree {fitted[j].tree_id} duplicates tree {fitted[i].tree_id} (overlapping stems); dropped"
+                )
+    if drop:
+        logger.info(f"removed {len(drop)} duplicate stem estimates")
+    return [r for r in records if r.tree_id not in drop]
 
 
 def summarize(records: Sequence[TreeRecord]) -> dict:

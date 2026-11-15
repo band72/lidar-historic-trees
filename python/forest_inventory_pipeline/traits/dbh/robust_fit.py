@@ -81,6 +81,10 @@ class FitParams:
     min_arc_coverage: float = 0.4
     max_relative_ci_width: float = 0.25
     min_inlier_ratio: float = 0.3
+    #: split clusters that contain several stems at breast height (under-segmentation)
+    split_stems: bool = True
+    #: XY gap (m) that separates two stems in the breast-height band
+    stem_gap: float = 0.15
     seed: int = 0
 
     def __post_init__(self):
@@ -158,6 +162,9 @@ class FitParams:
         require(
             0 <= self.min_inlier_ratio <= 1,
             f"min_inlier_ratio must be in [0, 1], got {self.min_inlier_ratio}",
+        )
+        require(
+            0.02 <= self.stem_gap <= 2.0, f"stem_gap must be in [0.02, 2] m, got {self.stem_gap}"
         )
 
     def to_dict(self) -> dict:

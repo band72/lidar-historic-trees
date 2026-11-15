@@ -36,3 +36,5 @@ fit:
   min_arc_coverage: 0.4   # quality flags
   max_relative_ci_width: 0.25
   min_inlier_ratio: 0.3
+  split_stems: true       # split clusters holding several stems at breast height (merged trees)
+  stem_gap: 0.15          # XY gap separating two stems in the band

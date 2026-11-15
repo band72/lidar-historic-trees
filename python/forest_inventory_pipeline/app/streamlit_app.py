@@ -324,6 +324,22 @@ def sidebar_fit() -> FitParams | None:
         cov = st.slider("Min arc coverage", 0.0, 1.0, 0.4, 0.05)
         relw = st.slider("Max CI width (% of DBH)", 1, 100, 25, 1)
         inl = st.slider("Min inlier ratio", 0.0, 1.0, 0.3, 0.05)
+    with s.expander("Merged trees"):
+        split = st.toggle(
+            "Split clusters with several stems",
+            True,
+            help="Segmentation sometimes merges a small tree into a neighbour's cluster. "
+            "This finds separate stems in the breast-height band and fits each one.",
+        )
+        gap = st.slider(
+            "Stem gap (cm)",
+            2,
+            100,
+            15,
+            1,
+            disabled=not split,
+            help="Points further apart than this (in XY, within the band) belong to different stems.",
+        )
     try:
         return FitParams(
             breast_height=bh,
@@ -340,6 +356,8 @@ def sidebar_fit() -> FitParams | None:
             min_arc_coverage=cov,
             max_relative_ci_width=relw / 100,
             min_inlier_ratio=inl,
+            split_stems=split,
+            stem_gap=gap / 100,
         )
     except FIPError as exc:
         s.error(str(exc))
@@ -698,20 +716,35 @@ def export_panel(records, fp: FitParams, seg: dict, source: str):
                 else:
                     opts[o.name] = st.text_input(o.name, str(o.default), key=key, help=o.help)
             try:
-                with tempfile.TemporaryDirectory() as td:
-                    out = exp.export(records, Path(td) / f"trees{exp.extension}", ctx, **opts)
-                    data = out.read_bytes()
-                st.download_button(
-                    f"Download {exp.extension}",
-                    data,
-                    file_name=f"trees{exp.extension}",
-                    mime=exp.mime,
-                    key=f"dl_{name}",
-                    type="primary",
-                    width="stretch",
-                )
+                exp.resolve_options(opts)  # validate now so errors show immediately
             except Exception as exc:
                 _fail(f"{name} export", exc)
+                continue
+            st.download_button(
+                f"Download {exp.extension}",
+                _deferred_export(exp, records, ctx, opts),  # built only when clicked
+                file_name=f"trees{exp.extension}",
+                mime=exp.mime,
+                key=f"dl_{name}",
+                type="primary",
+                width="stretch",
+                on_click="ignore",
+            )
+
+
+def _deferred_export(exp, records, ctx, opts):
+    """Callable for st.download_button: runs the exporter on click, in a worker thread."""
+
+    def build() -> bytes:
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                out = exp.export(records, Path(td) / f"trees{exp.extension}", ctx, **opts)
+                return out.read_bytes()
+        except Exception:
+            logger.exception(f"{exp.name} export failed")
+            raise
+
+    return build
 
 
 def calibration_panel(records, fp: FitParams):

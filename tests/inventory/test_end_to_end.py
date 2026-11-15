@@ -36,7 +36,7 @@ def _matched(plot, records):
 
 def test_finds_most_trees(run):
     plot, records, _ = run
-    assert len(_matched(plot, records)) >= 0.7 * len(plot.truth)
+    assert len(_matched(plot, records)) >= 0.95 * len(plot.truth)
 
 
 def test_dbh_accuracy_and_ci_coverage(run):
