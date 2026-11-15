@@ -45,7 +45,7 @@ It builds on the ICRA 2024 research code [PRBonn/forest_inventory_pipeline](http
 
 ### Windows 10 / 11 (64-bit)
 
-1. Download **[LiDAR-Tree-Inventory-0.1.0-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.0/LiDAR-Tree-Inventory-0.1.0-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
+1. Download **[LiDAR-Tree-Inventory-0.1.1-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.1/LiDAR-Tree-Inventory-0.1.1-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
 2. Run it. No administrator rights are needed: it installs for your user by default. On the first screen you can choose *Install for all users* instead, which needs admin.
 3. Optional tasks during setup:
    - **Create a desktop shortcut**
@@ -62,9 +62,9 @@ Requires glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 
 
 ```bash
 # download (or use the link on the release page)
-wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.0/LiDAR-Tree-Inventory-0.1.0-linux-x86_64.tar.gz
-tar xzf LiDAR-Tree-Inventory-0.1.0-linux-x86_64.tar.gz
-cd LiDAR-Tree-Inventory-0.1.0-linux-x86_64
+wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.1/LiDAR-Tree-Inventory-0.1.1-linux-x86_64.tar.gz
+tar xzf LiDAR-Tree-Inventory-0.1.1-linux-x86_64.tar.gz
+cd LiDAR-Tree-Inventory-0.1.1-linux-x86_64
 ./install.sh                 # for your user, no root needed
 # or: sudo ./install.sh --system    (all users, installs to /opt)
 ```
