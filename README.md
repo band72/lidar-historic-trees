@@ -72,7 +72,7 @@ cd LiDAR-Tree-Inventory-0.1.4-linux-x86_64
 The installer:
 - copies the program to `~/.local/share/lidar-tree-inventory`
 - adds the `fip` command to `~/.local/bin`
-- adds **LiDAR Tree Inventory** to your applications menu
+- adds **LiDAR Tree Inventory** to your applications menu and an icon on your desktop (skip the icon with `--no-desktop`)
 - checks the installation with `fip self-test`
 
 If it says `~/.local/bin` is not on your PATH, add this to `~/.bashrc`:
@@ -121,7 +121,7 @@ This runs four checks and prints `PASS` or `FAIL` for each:
 
 **No data yet? Use the demo plot.** It is a synthetic forest with known true DBH, so you can see how accurate the results and intervals are.
 
-*Web app:* start **LiDAR Tree Inventory** (or run `fip`), keep **Demo plot** selected, and press **Run segmentation**.
+*Web app:* start **LiDAR Tree Inventory** (or run `fip`), keep **Demo plot** selected, and press **Run tree extraction**.
 
 *Command line:*
 
@@ -176,7 +176,7 @@ fip inventory plot.laz -o run1 --crop 656100,1312300,656164,1312364 \
     -e csv -e dxf -e geojson -e points
 ```
 
-or in the web app: choose the file, enter the same box in *Crop*, press **Run segmentation**.
+or in the web app: choose the file, enter the same box in *Crop*, press **Run tree extraction**.
 
 **4. Check that the trees were found correctly.** Open `run1/trees.laz` in CloudCompare or QGIS and colour by `tree_id`: each tree should be one colour. In the app, look at the **Map** tab. Then adjust and re-run:
 
@@ -208,7 +208,7 @@ For several plots use the same settings file for all of them, so results are com
 
 **8. Deliver and keep the record.** Use `trees.csv` (tables, spreadsheets), `trees.dxf` (CAD drawings with each DBH circle at its true elevation), and `trees.geojson` (GIS). Keep the whole output folder: `run.json` records the inputs, settings, software version and a checksum of every file, and `fip.log` shows how each tree was handled.
 
-The same steps work in the web app: choose the file, set *Crop*, press **Run segmentation**, adjust the live sliders, then download the files from the **Table & export** tab. The **Calibration** tab applies the suggested `model_sd` with one click.
+The same steps work in the web app: choose the file, set *Crop*, press **Run tree extraction**, adjust the live sliders, then download the files from the **Table & export** tab. The **Calibration** tab applies the suggested `model_sd` with one click.
 
 ---
 
@@ -223,13 +223,13 @@ The sidebar has three steps.
 Choose **Display & export units** at the top: *same as cloud*, *m / cm*, *ft / in* or *US ft / in*. This sets the units of the map, the table, the charts and every download. In feet mode, the breast-height slider is in feet (default 4.5 ft).
 
 - **Demo plot**: a synthetic plot. Choose the number of trees and a random seed.
-- **File / bag path**: type the path to a file on this computer (any [supported format](#5-input-data)) or a ROS2 bag folder. Large files are best opened this way. For ROS bags, a *ROS bag options* panel appears, with topic, target frame, every n-th message and more.
+- **Choose file**: a file chooser for this computer's disk. Open folders from the list (⬆ goes up a level), or type or paste a path into *Folder*. Then pick a point cloud file (📄, any [supported format](#5-input-data), shown with its size), a ROS2 bag folder (🎒), or **Use all … files in this folder** to merge a folder of tiles. The file is read in place, so this is the way to open large files. The chooser starts in the folder you used last time. For ROS bags, a *ROS bag options* panel appears, with topic, target frame, every n-th message and more.
 - **Upload**: drag a file into the browser, up to 4 GB.
 - **Point cloud units** (for files): metres, feet or US survey feet.
 
 ### Step 2 · Find trees
 
-These are the slow steps. Adjust the settings, then press **Run segmentation**.
+These are the slow steps. Adjust the settings, then press **Run tree extraction**.
 
 | Setting | What it does | When to change it |
 |---|---|---|
@@ -262,11 +262,13 @@ These sliders update every result instantly.
 ### The main area
 
 - **Summary**: trees fitted, mean DBH, basal area per hectare, and the median CI width. For the demo plot it also shows the RMSE and CI coverage against the true values.
+- **💾 Save results to a folder**: choose an output folder (it starts next to your input file), a name for the run's subfolder (default `<file>_inventory`) and the formats, then press **Save results**. This writes CSV, DXF, GeoJSON, the segmented points, `run.json` and, when the CRS is known, `trees.prj`. It is the same set of files `fip inventory` writes.
 - **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ✖ failed). Hover for details, and click a tree to select it.
 - Below the map is a **DBH chart**: every tree's DBH with its confidence interval.
 - **Tree detail**: the breast-height slice with the fitted circle and the CI circles, and a 3D view of the tree with the fitted cylinder.
 - **Table & export**: a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
 - **Calibration**: upload field measurements to estimate the systematic uncertainty, then apply it with one click.
+- **Settings**: every setting of the current extraction as a YAML file. Save it next to your results, or download it, to repeat the run or to use it from the command line (`fip inventory INPUT -c inventory.yaml`).
 - **Log**: the application log, which you can filter to warnings or errors.
 
 ---
@@ -547,13 +549,15 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - **bootstrap**: refits the stem many times on resampled angular sectors and takes the percentile interval. Slower, with fewer assumptions.
    - Both methods add the **systematic uncertainty** `model_sd` in quadrature. This covers error the scan can't reveal: non-circular stems, taper, segmentation mistakes.
    - Stems seen from one side also get the **unseen-part allowance** `view_sd` ([details](#stems-that-are-only-partly-visible)).
-6. **Trunk check.** On real mobile-lidar data most raw clusters are not trunks: shrubs, fence posts, walls, foliage and sparse scatter. Fitting a circle to them gives confident-looking nonsense (DBH up to the 150 cm limit). A cluster is accepted as a tree only if, between 1.0 and 2.5 m:
+6. **Trunk check.** On real mobile-lidar data most raw clusters are not trunks: shrubs, fence posts, walls, foliage and sparse scatter. Fitting a circle to them gives confident-looking nonsense (DBH up to the 150 cm limit). A cluster is accepted as a tree only if, between 1.0 m and where its crown begins (at most 2.5 m):
    - most of its points (≥ 50 %, `min_stem_dominance`) lie on the fitted trunk surface;
-   - that surface continues through ≥ 80 % of the height (`min_stem_continuity`), which posts, stumps and shrubs fail;
+   - that surface continues through ≥ 80 % of that height and reaches at least breast height + 0.3 m (`min_stem_continuity`), which short posts, stumps and shrubs fail;
    - the inside is empty at breast height (≤ 20 % of points inside 60 % of the radius, `max_interior_fraction`), which foliage fails;
    - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails.
 
-   Rejected clusters are listed as `failed` with the reason (*"not trunk-like: ..."*). **Lower `min_surface_density` for sparse scans** (about 150 for UAV or distant terrestrial scans), or switch the check off with `reject_non_stems: false`. Known limit: man-made poles (posts holding a roof, signposts) are hollow vertical cylinders and pass.
+   The crown base is the first 10 cm slice above breast height + 0.3 m where less than 35 % of the points are on the trunk (`crown_slice_dominance`). A lidar on a vehicle or backpack sees the underside of a low crown as a dense flat layer; without this, trees whose crowns start at about 2 m were rejected.
+
+   Rejected clusters are listed as `failed` with the reason (*"not trunk-like: ..."*). **Lower `min_surface_density` for sparse scans** (about 150 for UAV or distant terrestrial scans), or switch the check off with `reject_non_stems: false`. Known limit: man-made poles (signposts, posts) are hollow vertical cylinders and pass.
 7. **Quality flags.** A tree becomes a *warning* when its arc coverage is below 60 % (seen from one side, with a wider interval), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
 
 On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, no false detections, DBH RMSE about 0.25 cm, and the 95 % interval contained the true DBH for every tree. **Real scans have larger errors, so calibrate before relying on the intervals.**
@@ -564,7 +568,7 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) recorded at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
 
-- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. With it, 14 remain, and the clear trunks among them have crisp single rings at breast height. Four of the 14 are posts holding a roof, which no geometric trunk check can tell from small trunks.
+- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. The first trunk check kept only 14 and **missed many real trees**: a planted row of trees whose crowns start at about 2 m. Seen from the vehicle, the underside of such a crown is a dense flat layer, which the check counted against the trunk (and which I first misread as posts holding a roof). Ending the check at the crown base fixed this: **54 trees are measured**, including all 16 trees of the row. Image review of the trees added this way found about 30 clear trees and a handful of doubtful ones (an arch, a wall edge, a mound; mostly with DBH over 40 cm).
 - The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
 - Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
 - No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
@@ -573,23 +577,27 @@ The pipeline has been run on a real 2-minute segment (files and images: [docs/re
 
 <img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_example.png" width="700" alt="An earlier DXF export opened in a CAD program, 2D wireframe"/>
 
-The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the trunk check (14 trees):
+The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the crown-aware trunk check (54 trees):
 
 | `trees.dxf` before the trunk check | `trees.dxf` after the trunk check |
 |---|---|
-| <img src="docs/real_data/2022-03-08_ouster_segment/dxf_before_trunk_check.png" width="300" alt="DXF before the trunk check, 227 circles"/> | <img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check.png" width="145" alt="DXF after the trunk check, 14 circles"/> |
+| <img src="docs/real_data/2022-03-08_ouster_segment/dxf_before_trunk_check.png" width="300" alt="DXF before the trunk check, 227 circles"/> | <img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check.png" width="165" alt="DXF after the trunk check, 54 circles"/> |
 
-Zoomed into the final DXF: labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
+Zoomed into the final DXF on the planted row of trees: labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
 
-<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF: T21 50.0 cm [44.4-55.7], T29 104.5 cm [92.6-116.4], T33, T36, T40"/>
+<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF of the tree row: T186 29.3 cm [26.5-32.1] to T179 22.7 cm [20.8-24.7]"/>
 
 **Breast-height slice from above, before and after the trunk check.** Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white. Coordinates are local (from the stitching, not north-up); the route runs top to bottom and the forest edge is on the right.
 
-| Before: 227 clusters measured | After: 14 accepted |
+| Before: 227 clusters measured | After: 54 accepted |
 |---|---|
 | <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the trunk check"/> |
 
-**Close-ups at 1.2-1.4 m** (blue points, white fitted circle, orange CI). Before: filled foliage blobs and near-empty circles fitted to scatter. After: crisp rings of real trunks, plus the posts holding a roof that the check cannot tell from small trunks.
+**Close-ups at 1.2-1.4 m** (blue points, white fitted circle, orange CI). Before: filled foliage blobs and near-empty circles fitted to scatter. After: the accepted trunks.
+
+**The planted row of trees** that the first trunk check missed (side views 0-4 m: a trunk under a crown starting at about 2 m), all measured now:
+
+<img src="docs/real_data/2022-03-08_ouster_segment/tree_row_side_views.png" width="750" alt="Side views of the trees in the planted row"/>
 
 | Before | After |
 |---|---|
@@ -702,7 +710,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 147 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 152 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```

@@ -105,8 +105,11 @@ class FitParams:
     min_stem_continuity: float = 0.8
     #: share of breast-height points inside 60 % of the radius (filled = foliage or shrub)
     max_interior_fraction: float = 0.2
-    #: the trunk must continue up to this height above ground (m); keep <= segment.max_z
+    #: the trunk check looks up to this height above ground (m), or to where the crown starts
     stem_check_top: float = 2.5
+    #: a 10 cm slice above breast height + 0.3 m with less than this share of points on the trunk
+    #: surface is taken as the crown base, which ends the trunk check zone
+    crown_slice_dominance: float = 0.35
     #: points per square metre of the *seen* trunk surface in the breast-height band (within
     #: inlier_tolerance). Sparse scatter fitted with a big circle falls far below; depends on
     #: the scanner and distance: lower it for sparse data (e.g. 150 for UAV or distant TLS).
@@ -175,6 +178,7 @@ class FitParams:
             0 <= self.ovality_sd <= 0.3, f"ovality_sd must be in [0, 0.3], got {self.ovality_sd}"
         )
         require(0.0 <= self.min_stem_dominance <= 1.0, "min_stem_dominance must be in [0, 1]")
+        require(0.0 <= self.crown_slice_dominance <= 1.0, "crown_slice_dominance must be in [0, 1]")
         require(0.0 <= self.min_stem_continuity <= 1.0, "min_stem_continuity must be in [0, 1]")
         require(0.0 <= self.max_interior_fraction <= 1.0, "max_interior_fraction must be in [0, 1]")
         require(self.min_surface_density >= 0.0, "min_surface_density must be >= 0")
@@ -523,29 +527,45 @@ def trunk_features(
     """
     How trunk-like a fitted cluster is, from all its height-normalized points.
 
-    - dominance: share of points between 1.0 m and ``stem_check_top`` lying on the fitted
-      surface (within max(5 cm, 30 % of the radius)). A lower trunk dominates that zone;
-      shrubs, walls, posts with roofs and foliage spread far beyond the circle.
-    - continuity: share of 10 cm slices of that zone holding at least
-      max(5, 1 % of the zone's surface points) surface points. Trunks continue upward;
-      low shrubs, stumps and short posts stop, and sparse scatter is too thin.
+    The check zone runs from 1.0 m up to where the crown begins (the first 10 cm slice above
+    breast height + 0.3 m in which fewer than ``crown_slice_dominance`` of the points lie on
+    the trunk surface), or ``stem_check_top`` if no crown starts below it. A vehicle- or
+    backpack-mounted lidar sees the underside of a low crown as a dense flat layer; counting
+    it as "not trunk" rejected real trees with crowns from about 2 m.
+
+    - dominance: share of points in the zone lying on the fitted surface
+      (within max(5 cm, 30 % of the radius)); shrubs, walls and foliage spread far beyond it.
+    - continuity: share of 10 cm slices of the zone holding at least max(5, 1 % of the zone's
+      surface points) surface points, and the trunk must reach the top of the zone. Low
+      shrubs, stumps and short posts stop below breast height + 0.3 m.
     - interior: share of breast-height points inside 60 % of the radius. Scanned from
       outside, a trunk is hollow; a foliage or shrub blob is filled.
     """
     r = float(theta[4])
     e = residuals(theta, points, params.breast_height)  # signed distance to the surface
     z = points[:, 2]
-    top = max(params.stem_check_top, params.breast_height + 0.5)
-    zone = (z >= 1.0) & (z <= top)
     near = np.abs(e) < max(0.05, 0.3 * r)
+    top_cap = max(params.stem_check_top, params.breast_height + 0.5)
+    min_top = params.breast_height + 0.3
+    zone_top = top_cap
+    for lo in np.arange(1.0, top_cap - 1e-9, 0.1):
+        if lo + 0.1 <= min_top + 1e-9:
+            continue
+        m = (z >= lo) & (z < lo + 0.1)
+        if m.sum() >= 20 and near[m].mean() < params.crown_slice_dominance:
+            zone_top = float(lo)  # the crown starts here
+            break
+    zone = (z >= 1.0) & (z <= zone_top)
     if not zone.any():
         return 0.0, 0.0, 1.0
     dominance = float(near[zone].mean())
     surf_z = z[near & zone]
     need = max(5, int(0.01 * len(surf_z)))
-    edges = np.arange(1.0, top + 1e-9, 0.1)
+    edges = np.arange(1.0, zone_top + 1e-9, 0.1)
     counts = np.histogram(surf_z, bins=edges)[0] if len(edges) > 1 else np.array([len(surf_z)])
     continuity = float(np.mean(counts >= need))
+    if len(counts) and counts[-1] < need:  # the trunk must reach the top of the zone
+        continuity = min(continuity, params.min_stem_continuity - 0.01)
     band = np.abs(z - params.breast_height) <= params.band_half_width
     interior = float(np.mean(e[band] < -0.4 * r)) if band.any() else 1.0
     return dominance, continuity, interior
@@ -619,11 +639,11 @@ def _fit_window(
         problems = []
         if dominance < params.min_stem_dominance:
             problems.append(
-                f"only {dominance:.0%} of points 1-{params.stem_check_top:g} m lie on the trunk surface"
+                f"only {dominance:.0%} of points between 1 m and the crown lie on the trunk surface"
             )
         if continuity < params.min_stem_continuity:
             problems.append(
-                f"trunk surface continuous over only {continuity:.0%} of 1-{params.stem_check_top:g} m"
+                f"trunk surface continuous over only {continuity:.0%} of the height between 1 m and the crown"
             )
         if interior > params.max_interior_fraction:
             problems.append(

@@ -6,7 +6,7 @@ Run with ``fip app`` (or ``streamlit run`` on this file).
 Interaction model
 -----------------
 - Slow stages (loading, ground segmentation, tree segmentation) live in a form and run
-  only when "Run segmentation" is pressed; results are kept in the session.
+  only when "Run tree extraction" is pressed; results are kept in the session.
 - Stem fitting is fast, so its parameters are live sliders: every change refits all trees
   (cached per parameter set) and every chart, table and export updates immediately.
 """
@@ -40,6 +40,8 @@ from forest_inventory_pipeline.units import (
     to_metres,
 )
 from forest_inventory_pipeline.utils import logger
+
+from forest_inventory_pipeline.app.file_browser import browse, load_prefs, save_pref
 
 
 def _log_dir() -> Path:
@@ -209,7 +211,7 @@ def sidebar_source():
         "Source",
         ["demo", "path", "upload"],
         horizontal=True,
-        format_func={"demo": "Demo plot", "path": "File / bag path", "upload": "Upload"}.get,
+        format_func={"demo": "Demo plot", "path": "Choose file", "upload": "Upload"}.get,
         help="Demo generates a synthetic plot with known DBH so you can see how accurate the CIs are.",
     )
     path, upload, demo, reader_opts = "", None, (25, 0), {}
@@ -218,15 +220,9 @@ def sidebar_source():
         demo = (c1.number_input("Trees", 1, 200, 25), c2.number_input("Seed", 0, 10_000, 0))
         key = f"demo:{demo}"
     elif kind == "path":
-        path = st.sidebar.text_input(
-            "Path on this machine",
-            placeholder="/data/plot.laz, a folder of LAS tiles, a .bag or a ROS2 bag folder",
-            help="Supported: "
-            + ", ".join(
-                sorted({e for r in registry.readers.values() for e in r.extensions if e != "/"})
-            )
-            + ", ROS2 bag directories.",
-        ).strip()
+        exts = {e for r in registry.readers.values() for e in r.extensions if e != "/"}
+        with st.sidebar.container(border=True):
+            path = browse("input", mode="file", extensions=exts, pref_key="last_input_dir")
         key = f"path:{path}"
         if path:
             p = Path(path).expanduser()
@@ -339,7 +335,7 @@ def sidebar_units(cloud_units: str) -> DisplayUnits:
 
 def sidebar_segmentation():
     st.sidebar.header("2 · Find trees")
-    st.sidebar.caption("Slow stages: adjust, then press **Run segmentation**.")
+    st.sidebar.caption("Slow stages: adjust, then press **Run tree extraction**.")
     with st.sidebar.form("segmentation"):
         with st.expander("Ground (CSF)", expanded=False):
             cloth = st.slider(
@@ -391,7 +387,7 @@ def sidebar_segmentation():
             )
             zr = st.slider("Height slice (m)", 0.0, 15.0, (1.0, 4.0), 0.1)
             min_pts = st.slider("Min points per tree", 10, 2000, 50, 10)
-        go_btn = st.form_submit_button("Run segmentation", type="primary", width="stretch")
+        go_btn = st.form_submit_button("Run tree extraction", type="primary", width="stretch")
     gp = inv.GroundParams(
         cloth_resolution=cloth,
         class_threshold=thresh,
@@ -992,6 +988,97 @@ def _deferred_export(exp, records, ctx, opts):
     return build
 
 
+def save_panel(records, fp: FitParams, seg: dict) -> None:
+    """Write every export plus run.json to a folder on disk (the installed-app workflow)."""
+    with st.expander("💾 Save results to a folder", expanded=False):
+        src = seg.get("input_path") or ""
+        default_name = (
+            Path(src).stem if src and Path(src).is_file() else Path(src).name if src else "demo"
+        ) + "_inventory"
+        if src and "output_dir" not in st.session_state:
+            # start the output chooser next to the input file
+            parent = Path(src).parent if Path(src).is_file() else Path(src)
+            st.session_state["output_dir"] = str(parent)
+            st.session_state["output_typed"] = str(parent)
+            st.session_state["output_sel"] = str(parent)
+        c1, c2 = st.columns([3, 2])
+        with c1:
+            folder = browse("output", mode="dir", pref_key="last_output_dir")
+        with c2:
+            name = st.text_input(
+                "New subfolder for this run", default_name, help="Created inside the chosen folder."
+            )
+            formats = st.multiselect(
+                "Formats",
+                sorted(registry.exporters),
+                default=[f for f in ("csv", "dxf", "geojson", "points") if f in registry.exporters],
+                format_func=lambda n: registry.exporters[n].label or n,
+            )
+            go = st.button(
+                "Save results", type="primary", disabled=not (folder and formats), width="stretch"
+            )
+        if go:
+            out = Path(folder) / name.strip() if name.strip() else Path(folder)
+            ctx = inv.context_for(
+                seg.get("source", ""),
+                fp,
+                units=U.unit,
+                crs=seg.get("crs"),
+                crs_wkt=seg.get("crs_wkt"),
+                ground=seg["gp"],
+                segment=seg["sp"],
+            )
+            try:
+                with st.spinner(f"writing to {out} …"):
+                    written = inv.export_records(records, out, formats, ctx)
+                save_pref("last_output_dir", str(folder))
+                st.success(f"Saved {len(written)} files to `{out}`")
+                st.code("\n".join(p.name for p in written), language=None)
+                logger.info(f"app: saved {len(written)} files to {out}")
+            except Exception as exc:
+                _fail("Saving results", exc)
+
+
+def settings_panel(
+    gp: inv.GroundParams, sp: inv.SegmentParams, fp: FitParams, seg: dict | None
+) -> None:
+    """Show every setting of the current run and save them as a config file for `fip -c`."""
+    import yaml
+    from dataclasses import asdict
+
+    st.subheader("Settings")
+    st.caption(
+        "Everything that controls the extraction. Ground and segmentation come from **2 · Find trees** "
+        "(applied when you press *Run tree extraction*); the fit settings from **3 · Fit stems** apply "
+        "immediately. Lengths are in metres. The file works with the command line: "
+        "`fip inventory INPUT -c inventory.yaml`."
+    )
+    used_g, used_s = (seg["gp"], seg["sp"]) if seg else (gp, sp)
+    if seg and (asdict(used_g) != asdict(gp) or asdict(used_s) != asdict(sp)):
+        st.warning(
+            "Ground or segmentation settings changed since the last run; press **Run tree extraction** to apply them."
+        )
+    cfg = {"ground": asdict(gp), "segment": asdict(sp), "fit": fp.to_dict()}
+    text = "# LiDAR Tree Inventory settings (metres)\n" + yaml.safe_dump(cfg, sort_keys=False)
+    st.code(text, language="yaml")
+    c1, c2 = st.columns(2)
+    c1.download_button(
+        "Download inventory.yaml",
+        text,
+        file_name="inventory.yaml",
+        mime="text/yaml",
+        width="stretch",
+    )
+    folder = st.session_state.get("output_sel") or load_prefs().get("last_output_dir")
+    if folder and c2.button(f"Save to {folder}", width="stretch"):
+        try:
+            target = Path(folder) / "inventory.yaml"
+            target.write_text(text, encoding="utf-8")
+            st.success(f"Saved `{target}`")
+        except OSError as exc:
+            _fail("Saving settings", exc)
+
+
 def calibration_panel(records, fp: FitParams):
     st.subheader("Calibrate the systematic uncertainty")
     st.markdown(
@@ -1053,7 +1140,12 @@ def log_panel():
 
 
 def main():
-    st.set_page_config(page_title="LiDAR Tree Inventory", page_icon="🌲", layout="wide")
+    icon = Path(__file__).with_name("icon.png")
+    st.set_page_config(
+        page_title="LiDAR Tree Inventory",
+        page_icon=str(icon) if icon.exists() else "🌲",
+        layout="wide",
+    )
     _init()
     st.title("🌲 LiDAR tree inventory")
     st.caption(
@@ -1099,6 +1191,7 @@ def main():
                     truth=truth,
                     source="; ".join(cloud.sources),
                     n_points=len(cloud.xyz),
+                    input_path=path if kind == "path" else "",
                 )
                 st.session_state["seg"] = seg
                 stale = False
@@ -1115,13 +1208,13 @@ def main():
 
     if seg is None:
         st.info(
-            "Pick a point cloud in the sidebar and press **Run segmentation**. "
+            "Pick a point cloud in the sidebar and press **Run tree extraction**. "
             "The demo plot is a quick way to see the whole workflow, with known true DBH values."
         )
         return
     if stale:
         st.warning(
-            "The source changed since the last run; results below are for the previous source. Press **Run segmentation** to update."
+            "The source changed since the last run; results below are for the previous source. Press **Run tree extraction** to update."
         )
     if fp is None:
         return
@@ -1138,8 +1231,9 @@ def main():
         return
     summary_row(df, seg["extent"], seg.get("truth"))
 
-    tab_map, tab_tree, tab_table, tab_cal, tab_log = st.tabs(
-        ["Map", "Tree detail", "Table & export", "Calibration", "Log"]
+    save_panel(records, fp, seg)
+    tab_map, tab_tree, tab_table, tab_cal, tab_set, tab_log = st.tabs(
+        ["Map", "Tree detail", "Table & export", "Calibration", "Settings", "Log"]
     )
     with tab_map:
         event = st.plotly_chart(
@@ -1250,6 +1344,8 @@ def main():
 
     with tab_cal:
         calibration_panel(records, fp)
+    with tab_set:
+        settings_panel(gp, sp, fp, seg)
     with tab_log:
         log_panel()
 

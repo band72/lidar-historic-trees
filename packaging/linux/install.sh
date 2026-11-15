@@ -4,8 +4,9 @@
 #   ./install.sh            install for the current user (no root needed)
 #   sudo ./install.sh --system   install for all users into /opt
 #   ./install.sh --prefix DIR    install into DIR
+#   ./install.sh --no-desktop    skip the desktop icon
 #
-# Installs the program, a `fip` command on PATH, a desktop menu entry and an uninstaller.
+# Installs the program, a `fip` command on PATH, a menu entry, a desktop icon and an uninstaller.
 set -euo pipefail
 
 APP_ID="lidar-tree-inventory"
@@ -15,11 +16,13 @@ SRC="$HERE/$APP_ID"
 
 MODE="user"
 PREFIX=""
+DESKTOP_ICON=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --system) MODE="system"; shift ;;
     --prefix) PREFIX="${2:?--prefix needs a directory}"; shift 2 ;;
-    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --no-desktop) DESKTOP_ICON=0; shift ;;
+    -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
 done
@@ -78,11 +81,33 @@ Categories=Science;Education;Geography;
 Keywords=lidar;forest;tree;dbh;point cloud;
 EOF
 
+# desktop icon (the invoking user's desktop, also for sudo --system installs)
+DESKTOP_FILE=""
+if [[ "$DESKTOP_ICON" == 1 ]]; then
+  REAL_USER="${SUDO_USER:-$USER}"
+  REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+  as_user() { if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then sudo -u "$REAL_USER" "$@"; else "$@"; fi; }
+  DESK="$(as_user xdg-user-dir DESKTOP 2>/dev/null || true)"
+  [[ -n "$DESK" && "$DESK" != "$REAL_HOME" ]] || DESK="$REAL_HOME/Desktop"
+  if [[ -d "$DESK" ]]; then
+    DESKTOP_FILE="$DESK/$APP_ID.desktop"
+    cp "$DESKTOP_DIR/$APP_ID.desktop" "$DESKTOP_FILE"
+    sed -i "s|^Icon=.*|Icon=$ICON_DIR/$APP_ID.png|" "$DESKTOP_FILE"
+    chmod +x "$DESKTOP_FILE"
+    [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]] && chown "$REAL_USER": "$DESKTOP_FILE"
+    # GNOME only launches desktop files marked as trusted
+    if command -v gio >/dev/null; then
+      as_user gio set "$DESKTOP_FILE" metadata::trusted true 2>/dev/null || true
+    fi
+    echo "  icon    : $DESKTOP_FILE"
+  fi
+fi
+
 cat > "$PREFIX/uninstall.sh" <<EOF
 #!/usr/bin/env bash
 # Removes $APP_NAME installed by install.sh ($MODE install).
 set -euo pipefail
-rm -f "$BIN_DIR/fip" "$DESKTOP_DIR/$APP_ID.desktop" "$ICON_DIR/$APP_ID.png"
+rm -f "$BIN_DIR/fip" "$DESKTOP_DIR/$APP_ID.desktop" "$ICON_DIR/$APP_ID.png" ${DESKTOP_FILE:+"$DESKTOP_FILE"}
 rm -rf "$PREFIX"
 command -v update-desktop-database >/dev/null && update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
 echo "$APP_NAME removed. Logs and outputs you created were not touched."

@@ -35,7 +35,10 @@ hiddenimports += collect_submodules("sklearn.cluster")
 hiddenimports += ["scipy.spatial.transform", "scipy.stats", "pandas", "yaml"]
 
 # Streamlit runs the app from a real .py file on disk
-datas += [(str(PKG / "app" / "streamlit_app.py"), "forest_inventory_pipeline/app")]
+datas += [
+    (str(PKG / "app" / "streamlit_app.py"), "forest_inventory_pipeline/app"),
+    (str(PKG / "app" / "icon.png"), "forest_inventory_pipeline/app"),
+]
 # example plugins and config shipped next to the program
 datas += [(str(ROOT / "plugins"), "plugins"), (str(ROOT / "config"), "config")]
 

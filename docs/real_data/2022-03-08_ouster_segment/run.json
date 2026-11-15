@@ -1,52 +1,52 @@
 {
   "software": {
     "name": "LiDAR Tree Inventory",
-    "version": "0.1.0",
+    "version": "0.1.4",
     "python": "3.12.3",
     "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.39"
   },
-  "created_utc": "2026-11-15T18:57:30+00:00",
+  "created_utc": "2026-11-15T22:02:31+00:00",
   "source": "segment_0-120s.laz",
   "output_units": "m",
   "crs": null,
   "breast_height_m": 1.3,
   "confidence": 0.95,
   "summary": {
-    "total": 162,
-    "ok": 6,
-    "warning": 8,
-    "failed": 148,
-    "mean_dbh": 0.4810668137397963,
-    "basal_area_m2": 3.9948399717126373
+    "total": 189,
+    "ok": 32,
+    "warning": 22,
+    "failed": 135,
+    "mean_dbh": 0.27108686190839754,
+    "basal_area_m2": 5.6602258847329034
   },
   "outputs": [
     {
       "exporter": "csv",
       "options": {},
       "file": "trees.csv",
-      "bytes": 30327,
-      "sha256": "2eabe77832080cfc874ee5aa465c3f25c17827a9a36ef7f5ba73b4be51075d2b"
+      "bytes": 39853,
+      "sha256": "9763ff1fe30ffcc8102c77085f574fb6cd81c5044bb03929734be4b6b2c11fd1"
     },
     {
       "exporter": "dxf",
       "options": {},
       "file": "trees.dxf",
-      "bytes": 71626,
-      "sha256": "1558fc501c1643cadae989b07e5af8029d9e1f3fc11eddab573fa36e6b6eaf11"
+      "bytes": 118015,
+      "sha256": "cc1801d3297c8e2a7221ac21d3b3937beb3e6b1b30ad7bbd28f32f45b126a6fc"
     },
     {
       "exporter": "geojson",
       "options": {},
       "file": "trees.geojson",
-      "bytes": 13384,
-      "sha256": "3899c04e51c2fde87f0acbf19ddc879a75250d4189b7c86989c776957c29ee98"
+      "bytes": 49843,
+      "sha256": "af7ffe284cc0efdba66a3e1b4c22071b5c832bdea4d9eafadd6c59304216aa67"
     },
     {
       "exporter": "points",
       "options": {},
       "file": "trees.laz",
-      "bytes": 52028332,
-      "sha256": "213ce60bac7e4e40038431a06d0cca0957e9140cdc0bfa22ba41ff4b79fb3d04"
+      "bytes": 57514083,
+      "sha256": "29df1daa18beab1b6b18a61084191b5258c0a717e6a9e4ca7f3fc69fb899860c"
     }
   ],
   "errors": [],
@@ -77,6 +77,7 @@
       "min_stem_continuity": 0.8,
       "max_interior_fraction": 0.2,
       "stem_check_top": 2.5,
+      "crown_slice_dominance": 0.35,
       "min_surface_density": 600.0,
       "min_trunk_inlier_ratio": 0.2,
       "complete_target_coverage": 0.85,

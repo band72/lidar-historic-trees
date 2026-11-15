@@ -66,3 +66,35 @@ def test_check_can_be_switched_off():
     pts = trunk(np.random.default_rng(6), r=0.06, z_top=1.5, n=3000)
     f = fit_stem(pts, FitParams(reject_non_stems=False))
     assert f.dbh == pytest.approx(0.12, abs=0.01)
+
+
+def test_tree_with_a_low_crown_is_accepted():
+    """Field data: a trunk to ~2 m under a crown whose underside a vehicle lidar sees as a flat
+    dense layer. Counting that layer as 'not trunk' used to reject these trees."""
+    rng = np.random.default_rng(7)
+    stem = trunk(rng, r=0.08, z_top=2.1, n=4000)
+    t = rng.uniform(0, 2 * np.pi, 40000)
+    rad = 2.0 * np.sqrt(rng.random(40000))
+    crown = np.c_[rad * np.cos(t), rad * np.sin(t), rng.uniform(2.1, 2.5, 40000)]
+    pts = np.r_[stem, crown]
+    f = fit_stem(pts, FitParams())
+    assert f.dbh == pytest.approx(0.16, abs=0.01)
+    # the old fixed 1.0-2.5 m zone would have seen mostly crown
+    assert f.stem_dominance > 0.5
+
+
+def test_shrub_with_crown_like_top_is_still_rejected():
+    """Spreads out from 1.0 m: the zone ends at breast height + 0.3 m and is mostly foliage."""
+    rng = np.random.default_rng(8)
+    pole = trunk(rng, r=0.06, z_top=2.5, n=1500)
+    shrub = np.c_[rng.uniform(-1.2, 1.2, (20000, 2)), rng.uniform(1.0, 2.5, 20000)]
+    with pytest.raises(FitError, match="not trunk-like"):
+        fit_stem(np.r_[pole, shrub], FitParams())
+
+
+def test_short_post_is_still_rejected_with_a_crown_above():
+    """A post ending at 1.4 m: the trunk must reach breast height + 0.3 m."""
+    rng = np.random.default_rng(9)
+    post = trunk(rng, r=0.06, z_top=1.4, n=3000)
+    with pytest.raises(FitError, match="not trunk-like"):
+        fit_stem(post, FitParams())
