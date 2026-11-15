@@ -117,3 +117,16 @@ def test_settings_tab_gives_a_cli_config(app):
 
     cfg = yaml.safe_load(yaml_text)
     inv.GroundParams(**cfg["ground"]), inv.SegmentParams(**cfg["segment"]), FitParams(**cfg["fit"])
+
+
+def test_reviewer_can_exclude_a_tree(app):
+    app.sidebar.number_input[0].set_value(8)
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    before = int(metric(app, "Trees fitted").value.split(" / ")[0])
+    import re
+
+    ms = next(m for m in app.multiselect if m.label.startswith("Exclude from the results"))
+    first_tree = int(re.search(r"\d+", ms.options[0]).group())  # options are display labels
+    ms.set_value([first_tree]).run()
+    assert not app.exception and not app.error
+    assert int(metric(app, "Trees fitted").value.split(" / ")[0]) == before - 1

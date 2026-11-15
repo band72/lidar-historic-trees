@@ -31,6 +31,9 @@ import numpy as np
 STATUS_OK = "ok"
 STATUS_WARNING = "warning"
 STATUS_FAILED = "failed"
+#: removed by a person reviewing the results (e.g. a shrub or a structure); kept in the CSV
+#: with this status, left out of totals, maps, DXF and GeoJSON
+STATUS_EXCLUDED = "excluded"
 
 
 @dataclass
@@ -90,7 +93,7 @@ class TreeRecord:
 
     @property
     def fitted(self) -> bool:
-        return self.status != STATUS_FAILED and np.isfinite(self.dbh)
+        return self.status not in (STATUS_FAILED, STATUS_EXCLUDED) and np.isfinite(self.dbh)
 
     def to_row(self, unit: str = "m") -> dict[str, Any]:
         """

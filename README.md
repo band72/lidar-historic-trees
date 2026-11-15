@@ -266,7 +266,7 @@ These sliders update every result instantly.
 - **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ✖ failed). Hover for details, and click a tree to select it.
 - Below the map is a **DBH chart**: every tree's DBH with its confidence interval.
 - **Tree detail**: the breast-height slice with the fitted circle and the CI circles, and a 3D view of the tree with the fitted cylinder.
-- **Table & export**: a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
+- **Table & export**: **Exclude from the results (reviewer)** lists trees you choose to leave out, such as a shrub or structure that passed the checks (or use **Exclude this tree** in *Tree detail*). Excluded trees stay in the CSV with status `excluded`, are left out of totals, the map, DXF and GeoJSON, and are listed in `run.json`. Below it, a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
 - **Calibration**: upload field measurements to estimate the systematic uncertainty, then apply it with one click.
 - **Settings**: every setting of the current extraction as a YAML file. Save it next to your results, or download it, to repeat the run or to use it from the command line (`fip inventory INPUT -c inventory.yaml`).
 - **Log**: the application log, which you can filter to warnings or errors.
@@ -553,7 +553,10 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - most of its points (≥ 50 %, `min_stem_dominance`) lie on the fitted trunk surface;
    - that surface continues through ≥ 80 % of that height and reaches at least breast height + 0.3 m (`min_stem_continuity`), which short posts, stumps and shrubs fail;
    - the inside is empty at breast height (≤ 20 % of points inside 60 % of the radius, `max_interior_fraction`), which foliage fails;
-   - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails.
+   - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails;
+   - the object reaches at least 1 m above breast height (`min_top_above_breast_height`), which low shrubs and stumps fail. Total tree height is deliberately *not* used: a vehicle lidar often cannot see crown tops above about 3 m near the sensor, so real trees can look only 3 m tall.
+
+   Optionally, `min_dbh` (off by default; app: *Minimum DBH*) drops stems thinner than your inventory's threshold, often 7.5-12.7 cm (3-5 in). Shrub stems are usually thinner, but so are young trees.
 
    The crown base is the first 10 cm slice above breast height + 0.3 m where less than 35 % of the points are on the trunk (`crown_slice_dominance`). A lidar on a vehicle or backpack sees the underside of a low crown as a dense flat layer; without this, trees whose crowns start at about 2 m were rejected.
 
@@ -568,7 +571,7 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) recorded at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
 
-- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. The first trunk check kept only 14 and **missed many real trees**: a planted row of trees whose crowns start at about 2 m. Seen from the vehicle, the underside of such a crown is a dense flat layer, which the check counted against the trunk (and which I first misread as posts holding a roof). Ending the check at the crown base fixed this: **54 trees are measured**, including all 16 trees of the row. Image review of the trees added this way found about 30 clear trees and a handful of doubtful ones (an arch, a wall edge, a mound; mostly with DBH over 40 cm).
+- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. The first trunk check kept only 14 and **missed many real trees**: a planted row of trees whose crowns start at about 2 m. Seen from the vehicle, the underside of such a crown is a dense flat layer, which the check counted against the trunk (and which I first misread as posts holding a roof). Ending the check at the crown base fixed this: 54 trees measured, including all 16 trees of the row. A minimum-height check then removed one low shrub mound (1.7 m tall, previously an 84 cm "tree"), leaving **53**, with every other result unchanged. Image review of the trees added this way found about 30 clear trees and a handful of doubtful ones (an arch, a wall edge, a mound; mostly with DBH over 40 cm).
 - The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
 - Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
 - No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
@@ -577,7 +580,7 @@ The pipeline has been run on a real 2-minute segment (files and images: [docs/re
 
 <img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_example.png" width="700" alt="An earlier DXF export opened in a CAD program, 2D wireframe"/>
 
-The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the crown-aware trunk check (54 trees):
+The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the crown-aware trunk check and the height check (53 trees):
 
 | `trees.dxf` before the trunk check | `trees.dxf` after the trunk check |
 |---|---|
@@ -589,7 +592,7 @@ Zoomed into the final DXF on the planted row of trees: labels give tree number, 
 
 **Breast-height slice from above, before and after the trunk check.** Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white. Coordinates are local (from the stitching, not north-up); the route runs top to bottom and the forest edge is on the right.
 
-| Before: 227 clusters measured | After: 54 accepted |
+| Before: 227 clusters measured | After: 53 accepted |
 |---|---|
 | <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the trunk check"/> |
 
@@ -691,7 +694,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Half the trunk is missing in the scan** | It is measured, flagged `warning` and given a wider interval. If the scanner moved, `--complete-partial` can complete it from other heights; see [Stems that are only partly visible](#stems-that-are-only-partly-visible) |
 | **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
 | **Real trees rejected as "not trunk-like: only N points per m²"** | Your scanner is sparser than the default assumes: lower `fit.min_surface_density` (app: *Trunk check*), e.g. to 150 |
-| **Many "trees" that are shrubs, posts or walls** | Keep the trunk check on (default); raise `min_surface_density` or `min_stem_dominance` if some still get through |
+| **Many "trees" that are shrubs, posts or walls** | Keep the trunk check on (default). Set a *Minimum DBH* if your inventory has one. Exclude the remaining few in the app (*Exclude from the results*); raise `min_surface_density` or `min_stem_dominance` if many get through |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
 | **ROS bag: "several PointCloud2 topics"** | Choose one with `-R topic=/name` |
@@ -710,7 +713,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 152 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 157 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```

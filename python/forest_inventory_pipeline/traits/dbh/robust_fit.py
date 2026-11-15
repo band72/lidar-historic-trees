@@ -110,6 +110,13 @@ class FitParams:
     #: a 10 cm slice above breast height + 0.3 m with less than this share of points on the trunk
     #: surface is taken as the crown base, which ends the trunk check zone
     crown_slice_dominance: float = 0.35
+    #: the object must reach at least this far above breast height (95th percentile of its
+    #: points); low shrubs and stumps do not. Kept small on purpose: vehicle lidar often
+    #: cannot see crown tops above ~3 m near the sensor, so true tree height is unreliable.
+    min_top_above_breast_height: float = 1.0
+    #: stems thinner than this (m) are not counted as trees (0 = off). Many inventories use
+    #: 0.075-0.127 m (3-5 in); shrub stems are usually thinner.
+    min_dbh: float = 0.0
     #: points per square metre of the *seen* trunk surface in the breast-height band (within
     #: inlier_tolerance). Sparse scatter fitted with a big circle falls far below; depends on
     #: the scanner and distance: lower it for sparse data (e.g. 150 for UAV or distant TLS).
@@ -179,6 +186,11 @@ class FitParams:
         )
         require(0.0 <= self.min_stem_dominance <= 1.0, "min_stem_dominance must be in [0, 1]")
         require(0.0 <= self.crown_slice_dominance <= 1.0, "crown_slice_dominance must be in [0, 1]")
+        require(
+            0.0 <= self.min_top_above_breast_height <= 20.0,
+            "min_top_above_breast_height must be in [0, 20] m",
+        )
+        require(0.0 <= self.min_dbh <= 2.0, f"min_dbh must be in [0, 2] m, got {self.min_dbh}")
         require(0.0 <= self.min_stem_continuity <= 1.0, "min_stem_continuity must be in [0, 1]")
         require(0.0 <= self.max_interior_fraction <= 1.0, "max_interior_fraction must be in [0, 1]")
         require(self.min_surface_density >= 0.0, "min_surface_density must be >= 0")
@@ -565,7 +577,7 @@ def trunk_features(
     counts = np.histogram(surf_z, bins=edges)[0] if len(edges) > 1 else np.array([len(surf_z)])
     continuity = float(np.mean(counts >= need))
     if len(counts) and counts[-1] < need:  # the trunk must reach the top of the zone
-        continuity = min(continuity, params.min_stem_continuity - 0.01)
+        continuity = min(continuity, max(0.0, params.min_stem_continuity - 0.01))
     band = np.abs(z - params.breast_height) <= params.band_half_width
     interior = float(np.mean(e[band] < -0.4 * r)) if band.any() else 1.0
     return dominance, continuity, interior
@@ -649,8 +661,17 @@ def _fit_window(
             problems.append(
                 f"{interior:.0%} of breast-height points fill the inside (foliage or shrub?)"
             )
+        top = float(np.percentile(points[:, 2], 95))
+        if top < params.breast_height + params.min_top_above_breast_height:
+            problems.append(
+                f"only reaches {top:.1f} m (needs {params.breast_height + params.min_top_above_breast_height:.1f} m; low shrub or stump?)"
+            )
         if problems:
             raise FitError("not trunk-like: " + "; ".join(problems))
+    if params.min_dbh > 0 and 2.0 * r < params.min_dbh:
+        raise FitError(
+            f"DBH {2.0 * r * 100:.1f} cm is below the minimum of {params.min_dbh * 100:.1f} cm"
+        )
 
     e = residuals(theta, band, params.breast_height)
     inlier = np.abs(e) < params.inlier_tolerance

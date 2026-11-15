@@ -36,11 +36,11 @@ The tree table (`trees.csv`) and `trajectory.csv` are in local metres from the s
 | `site_location.json` | Site and route coordinates (WGS84), GNSS quality and the no-RTK note |
 | `trajectory.csv` | Vehicle path from KISS-ICP (time, x, y, z in local metres) |
 | `before_trunk_check_*.png` | The same segment before the trunk check: 227 clusters were measured, most of them shrubs, posts, walls and scatter |
-| `dxf_before_trunk_check.png`, `dxf_after_trunk_check.png` | This segment's `trees.dxf` from the first and the final run, rendered from the files with ezdxf (227 and 54 DBH circles) |
+| `dxf_before_trunk_check.png`, `dxf_after_trunk_check.png` | This segment's `trees.dxf` from the first and the final run, rendered from the files with ezdxf (227 and 53 DBH circles) |
 | `dxf_after_trunk_check_zoom.png` | Close-up of the final DXF on the planted tree row: circles, interval rings and labels |
 | `tree_row_side_views.png` | Side views of the 16 trees in a planted row that the first trunk check rejected |
 | `dxf_in_cad_example.png` | An earlier DXF export opened in a CAD program (2D wireframe), showing how the export looks in CAD; not from this segment's runs |
-| `accepted_*.png` | After the crown-aware trunk check: 54 accepted. Overview of the breast-height slice with DBH circles, and close-ups of the accepted stems |
+| `accepted_*.png` | After the crown-aware trunk check and the height check: 53 accepted. Overview of the breast-height slice with DBH circles, and close-ups of the accepted stems |
 
 The stitched cloud (135 MB) and the segmented points (67 MB) are too large for the repository. They can be regenerated with:
 
@@ -55,6 +55,7 @@ fip inventory segment_0-120s.laz -o inventory -e csv -e dxf -e geojson -e points
 |---|---|
 | 227 of 308 clusters got a DBH; image review showed most were not trunks | Trunk check (on by default) |
 | The first trunk check kept 14 and missed a planted row of trees with crowns from about 2 m (their crown undersides look like a flat layer; first misread as posts holding a roof) | The check zone ends at the crown base: 54 measured, including all 16 trees of the row; about 30 of the added trees are clear trees, a handful doubtful |
+| One accepted "tree" was a low shrub mound (84 cm "DBH", 1.7 m tall) | Objects must reach 1 m above breast height: 53 measured, only the mound removed. Remaining doubtful objects can be excluded by a reviewer in the app |
 | Iteration-limit warning on 71 % of trees, although DBH changed < 0.6 mm with 20x more iterations | Realistic convergence test |
 | 16.7 GB peak memory | 7.4 GB (merged-tree splitting on 2 cm cells), identical results |
 | Ouster "no return" pixels decoded as (0, 0, 0) | Dropped by the bag reader (they would trace the vehicle path once scans are stitched) |

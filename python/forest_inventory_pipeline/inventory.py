@@ -41,7 +41,7 @@ from scipy.spatial import KDTree
 from .errors import FitError, InputDataError, ParameterError, StageError
 from .plugins import ExportContext, load_plugins, registry
 from .preprocess.height_normalization import interpolate_ground_z
-from .records import STATUS_FAILED, STATUS_OK, STATUS_WARNING, TreeRecord
+from .records import STATUS_EXCLUDED, STATUS_FAILED, STATUS_OK, STATUS_WARNING, TreeRecord
 from .traits.dbh.robust_fit import FitParams, fit_stem
 from .units import METRES_PER_UNIT as METRES_PER_UNIT_
 from .utils import logger
@@ -811,6 +811,31 @@ def dedupe_stems(records: list[TreeRecord]) -> list[TreeRecord]:
     return [r for r in records if r.tree_id not in drop]
 
 
+def apply_exclusions(
+    records: Sequence[TreeRecord], excluded: set[int] | Sequence[int]
+) -> list[TreeRecord]:
+    """
+    Records with the given tree ids marked ``excluded`` (by a reviewer).
+
+    Returns new records for the excluded trees and leaves the input untouched, so cached
+    fits can be shared. Excluded trees stay in the CSV with their measurements and status
+    ``excluded``, and are left out of totals, maps, DXF and GeoJSON.
+    """
+    from dataclasses import replace
+
+    ids = {int(i) for i in excluded}
+    out = []
+    for r in records:
+        if r.tree_id in ids and r.status != STATUS_FAILED:
+            note = "excluded by reviewer" + (
+                f" (was {r.status}: {r.message})" if r.message else f" (was {r.status})"
+            )
+            out.append(replace(r, status=STATUS_EXCLUDED, message=note, extra=dict(r.extra)))
+        else:
+            out.append(r)
+    return out
+
+
 def summarize(records: Sequence[TreeRecord]) -> dict:
     statuses = [r.status for r in records]
     fitted = [r for r in records if r.fitted]
@@ -820,6 +845,7 @@ def summarize(records: Sequence[TreeRecord]) -> dict:
         ok=statuses.count(STATUS_OK),
         warning=statuses.count(STATUS_WARNING),
         failed=statuses.count(STATUS_FAILED),
+        excluded=statuses.count(STATUS_EXCLUDED),
         mean_dbh=float(dbh.mean()) if len(dbh) else float("nan"),
         basal_area_m2=float(np.sum(np.pi * (dbh / 2) ** 2)) if len(dbh) else 0.0,
     )

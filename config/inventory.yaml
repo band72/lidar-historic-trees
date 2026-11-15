@@ -40,6 +40,8 @@ fit:
   min_stem_dominance: 0.5      # share of 1-2.5 m points on the trunk surface
   min_stem_continuity: 0.8     # share of 10 cm slices 1-2.5 m with trunk-surface points
   max_interior_fraction: 0.2   # share of breast-height points filling the inside
+  min_top_above_breast_height: 1.0  # object must reach breast height + this (low shrubs, stumps fail)
+  min_dbh: 0.0                 # stems thinner than this (m) are not trees; 0 = off (e.g. 0.10)
   complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
   max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems

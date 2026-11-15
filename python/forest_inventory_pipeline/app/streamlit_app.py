@@ -29,7 +29,12 @@ from forest_inventory_pipeline import inventory as inv
 from forest_inventory_pipeline.calibration import _to_metres, calibrate
 from forest_inventory_pipeline.errors import FIPError
 from forest_inventory_pipeline.plugins import load_plugins, registry
-from forest_inventory_pipeline.records import STATUS_FAILED, STATUS_OK, STATUS_WARNING
+from forest_inventory_pipeline.records import (
+    STATUS_EXCLUDED,
+    STATUS_FAILED,
+    STATUS_OK,
+    STATUS_WARNING,
+)
 from forest_inventory_pipeline.synthetic import make_plot
 from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams, band_points, residuals
 from forest_inventory_pipeline.units import (
@@ -68,7 +73,9 @@ STATUS_STYLE = {
     STATUS_OK: dict(color="#0ca30c", symbol="circle", label="✔ ok"),
     STATUS_WARNING: dict(color="#fab219", symbol="triangle-up", label="⚠ warning"),
     STATUS_FAILED: dict(color="#d03b3b", symbol="x", label="✖ failed"),
+    STATUS_EXCLUDED: dict(color="#8a8a8a", symbol="circle-x-open", label="⊘ excluded"),
 }
+NOT_MEASURED = (STATUS_FAILED, STATUS_EXCLUDED)
 
 
 class DisplayUnits:
@@ -521,6 +528,17 @@ def sidebar_fit() -> FitParams | None:
             help="Lower it for sparse scans (UAV, distant TLS: about 150). Too low lets sparse "
             "scatter through as large 'trees'.",
         )
+        min_dbh = st.number_input(
+            f"Minimum DBH ({U.dl}, 0 = off)",
+            0.0,
+            100.0,
+            0.0,
+            0.5,
+            help="Stems thinner than this are not counted as trees (listed as failed with the "
+            "reason). Many inventories use 7.5-12.7 cm (3-5 in); shrub stems are usually thinner, "
+            "but so are young trees.",
+        )
+        min_dbh_m = min_dbh * (0.0254 if U.feet else 0.01)
     with s.expander("Partly seen stems"):
         complete = st.toggle(
             "Complete partly seen stems",
@@ -575,6 +593,7 @@ def sidebar_fit() -> FitParams | None:
             complete_partial_stems=complete,
             reject_non_stems=trunk_check,
             min_surface_density=float(density),
+            min_dbh=float(min_dbh_m),
             max_band_half_width=max(max_hw, hw),
             max_relative_ci_width=relw / 100,
             min_inlier_ratio=inl,
@@ -624,7 +643,7 @@ def match_truth(df: pd.DataFrame, truth: list[dict] | None) -> pd.DataFrame:
 
 
 def summary_row(df: pd.DataFrame, extent: np.ndarray, truth):
-    fitted = df[df.status != STATUS_FAILED]
+    fitted = df[~df.status.isin(NOT_MEASURED)]
     area_ha = max(extent[0] * extent[1], 1e-9) / 10_000
     ba = float(np.sum(np.pi * (fitted.dbh / 2) ** 2))
     cols = st.columns(5 if truth else 4)
@@ -688,7 +707,7 @@ def plot_map(df: pd.DataFrame, truth):
         f"<b>Tree {r.tree_id}</b> · {STATUS_STYLE[r.status]['label']}<br>"
         + (
             f"DBH {r.dbh_d:.1f} {U.dl} [{r.ci_low_d:.1f}–{r.ci_high_d:.1f}]<br>"
-            if r.status != STATUS_FAILED
+            if r.status not in NOT_MEASURED
             else f"{r.message}<br>"
         )
         + f"x {r.x:.2f} · y {r.y:.2f}<br>ground {r.ground_z:.2f} {U.ul} · DBH plane {r.bh_elevation:.2f} {U.ul}"
@@ -735,7 +754,7 @@ def plot_map(df: pd.DataFrame, truth):
 
 
 def plot_dbh_ci(df: pd.DataFrame, truth):
-    d = df[df.status != STATUS_FAILED].sort_values("dbh_d")
+    d = df[~df.status.isin(NOT_MEASURED)].sort_values("dbh_d")
     d = d.assign(rank=np.arange(len(d)))
     fig = go.Figure()
     for status, style in STATUS_STYLE.items():
@@ -911,6 +930,7 @@ def export_panel(records, fp: FitParams, seg: dict, source: str):
         crs_wkt=seg.get("crs_wkt"),
         ground=seg["gp"],
         segment=seg["sp"],
+        excluded_by_reviewer=sorted(excluded_ids(seg)),
     )
     cols = st.columns(max(len(registry.exporters), 1))
     for col, (name, exp) in zip(cols, sorted(registry.exporters.items())):
@@ -988,6 +1008,36 @@ def _deferred_export(exp, records, ctx, opts):
     return build
 
 
+def excluded_key(seg: dict) -> str:
+    return f"excluded_{seg['run_id']}"
+
+
+def excluded_ids(seg: dict) -> list[int]:
+    """Tree ids the reviewer excluded in this session for this run."""
+    return list(st.session_state.get(excluded_key(seg), []))
+
+
+def _toggle_exclusion(seg: dict, tid: int) -> None:
+    key = excluded_key(seg)
+    cur = list(st.session_state.get(key, []))
+    st.session_state[key] = [t for t in cur if t != tid] if tid in cur else cur + [tid]
+
+
+def exclusion_panel(records, seg: dict) -> None:
+    """Reviewer's list of trees to leave out (shrubs, structures the checks let through)."""
+    choices = [r.tree_id for r in records if r.status != STATUS_FAILED]
+    by_id = {r.tree_id: r for r in records}
+    st.multiselect(
+        "Exclude from the results (reviewer)",
+        choices,
+        key=excluded_key(seg),
+        format_func=lambda t: f"T{t} · {U.D(by_id[t].dbh):.0f} {U.dl}" if t in by_id else f"T{t}",
+        help="Shrubs, structures or anything else you don't want counted. Excluded trees stay in "
+        "the CSV with status 'excluded', are left out of totals, maps, DXF and GeoJSON, and are "
+        "listed in run.json. Tip: click a tree on the map, then use 'Exclude this tree' in Tree detail.",
+    )
+
+
 def save_panel(records, fp: FitParams, seg: dict) -> None:
     """Write every export plus run.json to a folder on disk (the installed-app workflow)."""
     with st.expander("💾 Save results to a folder", expanded=False):
@@ -1027,6 +1077,7 @@ def save_panel(records, fp: FitParams, seg: dict) -> None:
                 crs_wkt=seg.get("crs_wkt"),
                 ground=seg["gp"],
                 segment=seg["sp"],
+                excluded_by_reviewer=sorted(excluded_ids(seg)),
             )
             try:
                 with st.spinner(f"writing to {out} …"):
@@ -1225,6 +1276,7 @@ def main():
         except Exception as exc:
             _fail("Fitting", exc)
             return
+    records = inv.apply_exclusions(records, excluded_ids(seg))
     df = to_display(match_truth(records_frame(records), seg.get("truth")))
     if df.empty:
         st.warning("No trees to show.")
@@ -1272,6 +1324,15 @@ def main():
             ),
         )
         rec = next(r for r in records if r.tree_id == tid)
+        if rec.status != STATUS_FAILED:
+            excl = tid in excluded_ids(seg)
+            st.button(
+                "Include this tree again" if excl else "Exclude this tree",
+                key=f"toggle_excl_{tid}",
+                on_click=_toggle_exclusion,
+                args=(seg, tid),
+                help="Leave this tree out of the results (e.g. a shrub or a structure).",
+            )
         if rec.fitted:
             st.markdown(
                 f"**DBH {U.D(rec.dbh):.2f} {U.dl}**, {rec.confidence:.0%} CI "
@@ -1289,6 +1350,7 @@ def main():
         c2.plotly_chart(plot_tree_3d(rec, fp), width="stretch", theme="streamlit")
 
     with tab_table:
+        exclusion_panel(records, seg)
         status_filter = st.multiselect(
             "Status",
             list(STATUS_STYLE),

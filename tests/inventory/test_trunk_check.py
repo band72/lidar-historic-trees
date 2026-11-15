@@ -98,3 +98,21 @@ def test_short_post_is_still_rejected_with_a_crown_above():
     post = trunk(rng, r=0.06, z_top=1.4, n=3000)
     with pytest.raises(FitError, match="not trunk-like"):
         fit_stem(post, FitParams())
+
+
+def test_low_shrub_mound_is_rejected_by_height():
+    """Field data T148: a shrub mound only 1.4 m tall that passed as an 84 cm 'tree'."""
+    rng = np.random.default_rng(10)
+    pts = trunk(rng, r=0.42, z_top=1.7, n=12000)
+    with pytest.raises(FitError, match="only reaches"):
+        fit_stem(pts, FitParams())
+    assert (
+        fit_stem(pts, FitParams(min_top_above_breast_height=0.0, min_stem_continuity=0.0)).dbh > 0.8
+    )
+
+
+def test_minimum_dbh():
+    pts = trunk(np.random.default_rng(11), r=0.04)  # 8 cm stem
+    assert fit_stem(pts, FitParams()).dbh == pytest.approx(0.08, abs=0.005)  # off by default
+    with pytest.raises(FitError, match="below the minimum of 10.0 cm"):
+        fit_stem(pts, FitParams(min_dbh=0.10))

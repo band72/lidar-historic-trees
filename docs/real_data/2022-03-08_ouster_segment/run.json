@@ -5,7 +5,7 @@
     "python": "3.12.3",
     "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.39"
   },
-  "created_utc": "2026-11-15T22:02:31+00:00",
+  "created_utc": "2026-11-15T22:28:17+00:00",
   "source": "segment_0-120s.laz",
   "output_units": "m",
   "crs": null,
@@ -13,40 +13,41 @@
   "confidence": 0.95,
   "summary": {
     "total": 189,
-    "ok": 32,
+    "ok": 31,
     "warning": 22,
-    "failed": 135,
-    "mean_dbh": 0.27108686190839754,
-    "basal_area_m2": 5.6602258847329034
+    "failed": 136,
+    "excluded": 0,
+    "mean_dbh": 0.26036913024341973,
+    "basal_area_m2": 5.108187455873724
   },
   "outputs": [
     {
       "exporter": "csv",
       "options": {},
       "file": "trees.csv",
-      "bytes": 39853,
-      "sha256": "9763ff1fe30ffcc8102c77085f574fb6cd81c5044bb03929734be4b6b2c11fd1"
+      "bytes": 39771,
+      "sha256": "2deef041739230b46fb58cc48437dcc5a1cb1cfbfb247a58ea2774a02f240105"
     },
     {
       "exporter": "dxf",
       "options": {},
       "file": "trees.dxf",
-      "bytes": 118015,
-      "sha256": "cc1801d3297c8e2a7221ac21d3b3937beb3e6b1b30ad7bbd28f32f45b126a6fc"
+      "bytes": 116824,
+      "sha256": "a8cd24728ae6c08e2a40189d1da6eeec43c5f0a512237ea1beaa0a9902c5e042"
     },
     {
       "exporter": "geojson",
       "options": {},
       "file": "trees.geojson",
-      "bytes": 49843,
-      "sha256": "af7ffe284cc0efdba66a3e1b4c22071b5c832bdea4d9eafadd6c59304216aa67"
+      "bytes": 48759,
+      "sha256": "70359cf37083a88f58fd6dcd55c2d84d32a31404ece687fa0af07a5d3b4c7060"
     },
     {
       "exporter": "points",
       "options": {},
       "file": "trees.laz",
-      "bytes": 57514083,
-      "sha256": "29df1daa18beab1b6b18a61084191b5258c0a717e6a9e4ca7f3fc69fb899860c"
+      "bytes": 57502411,
+      "sha256": "f10c351cfe65af3bb51e7c8a4d3a2c33ba422f5de332b0b0395c4a76d1a100de"
     }
   ],
   "errors": [],
@@ -78,6 +79,8 @@
       "max_interior_fraction": 0.2,
       "stem_check_top": 2.5,
       "crown_slice_dominance": 0.35,
+      "min_top_above_breast_height": 1.0,
+      "min_dbh": 0.0,
       "min_surface_density": 600.0,
       "min_trunk_inlier_ratio": 0.2,
       "complete_target_coverage": 0.85,
