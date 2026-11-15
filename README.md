@@ -569,9 +569,19 @@ The pipeline has been run on a real 2-minute segment (files and images: [docs/re
 - Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
 - No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
 
-**`trees.dxf` from this segment in a CAD program** (2D wireframe; the first run, before the trunk check). Each fitted cluster is drawn as a DBH circle (layer `FIP_DBH` green for ok, `FIP_DBH_WARN` yellow for warning) with its CI rings (`FIP_CI`, cyan, dashed; solid when zoomed out) and a label giving the tree number, DBH and interval. All 227 fitted clusters are drawn, so many of these circles are shrubs, posts and walls; the trunk check now removes them.
+**The DXF export.** `trees.dxf` draws each tree as a DBH circle with its confidence-interval rings, its centre point and a label (tree number, DBH, interval), on separate layers (`FIP_DBH`, `FIP_DBH_WARN`, `FIP_CI`, `FIP_LABEL`, ...). How it looks in a CAD program, from an earlier export:
 
-<img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_before_trunk_check.png" width="700" alt="DXF export opened in a CAD program: DBH circles with CI rings and labels"/>
+<img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_example.png" width="700" alt="An earlier DXF export opened in a CAD program, 2D wireframe"/>
+
+The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the trunk check (14 trees):
+
+| `trees.dxf` before the trunk check | `trees.dxf` after the trunk check |
+|---|---|
+| <img src="docs/real_data/2022-03-08_ouster_segment/dxf_before_trunk_check.png" width="300" alt="DXF before the trunk check, 227 circles"/> | <img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check.png" width="145" alt="DXF after the trunk check, 14 circles"/> |
+
+Zoomed into the final DXF: labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
+
+<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF: T21 50.0 cm [44.4-55.7], T29 104.5 cm [92.6-116.4], T33, T36, T40"/>
 
 **Breast-height slice from above, before and after the trunk check.** Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white. Coordinates are local (from the stitching, not north-up); the route runs top to bottom and the forest edge is on the right.
 

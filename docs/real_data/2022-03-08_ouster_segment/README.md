@@ -17,7 +17,9 @@
 | `run.json` | Run record: parameters, summary, output checksums. It reports version "0.1.0" because the development install's version metadata was stale; the code was the development version between 0.1.3 and 0.1.4 |
 | `trajectory.csv` | Vehicle path from KISS-ICP (time, x, y, z in local metres) |
 | `before_trunk_check_*.png` | The same segment before the trunk check: 227 clusters were measured, most of them shrubs, posts, walls and scatter |
-| `dxf_in_cad_before_trunk_check.png` | `trees.dxf` from the first run (before the trunk check) opened in a CAD program, 2D wireframe: DBH circles, CI rings and labels for all 227 fitted clusters |
+| `dxf_before_trunk_check.png`, `dxf_after_trunk_check.png` | This segment's `trees.dxf` from both runs, rendered from the files with ezdxf (227 and 14 DBH circles) |
+| `dxf_after_trunk_check_zoom.png` | Close-up of the final DXF: circles, interval rings and labels |
+| `dxf_in_cad_example.png` | An earlier DXF export opened in a CAD program (2D wireframe), showing how the export looks in CAD; not from this segment's runs |
 | `accepted_*.png` | After the trunk check: 14 accepted. Overview of the breast-height slice with DBH circles, and close-ups of the accepted stems |
 
 The stitched cloud (135 MB) and the segmented points (67 MB) are too large for the repository. They can be regenerated with:
