@@ -744,6 +744,7 @@ def fit_trees(
             )
             rec.axis = sf.axis
             rec.band_half_width = sf.band_half_width
+            rec.dbh_method = sf.dbh_method
             rec.message = "; ".join(sf.warnings + sf.notes)
             for m in metric_objs:
                 try:

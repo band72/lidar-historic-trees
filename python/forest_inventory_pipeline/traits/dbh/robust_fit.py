@@ -62,7 +62,6 @@ from ...errors import FitError, ParameterError
 N_PARAMS = 5
 #: view_sd = ovality_sd * DBH * VIEW_FACTOR * (1 - arc_coverage); fitted to simulated oval stems
 VIEW_FACTOR = 3.0
-_ANGLE_BINS = 36
 
 
 @dataclass
@@ -120,8 +119,8 @@ class FitParams:
             f"breast_height must be in [0.1, 5] m, got {self.breast_height}",
         )
         require(
-            0.02 <= self.band_half_width <= 1.0,
-            f"band_half_width must be in [0.02, 1] m, got {self.band_half_width}",
+            0.02 <= self.band_half_width <= 1.5,
+            f"band_half_width must be in [0.02, 1.5] m, got {self.band_half_width}",
         )
         require(
             self.breast_height - self.band_half_width > 0,
@@ -231,6 +230,8 @@ class StemFit:
     notes: list[str] = field(default_factory=list)
     #: half-height of the measurement window that was used (m)
     band_half_width: float = 0.0
+    #: how the DBH was obtained: "breast-height band" or "taller window (taper)"
+    dbh_method: str = "breast-height band"
 
     @property
     def status(self) -> str:
@@ -461,16 +462,24 @@ def _angles(theta: np.ndarray, points: np.ndarray, z_ref: float) -> np.ndarray:
 
 
 def arc_coverage(angles: np.ndarray) -> tuple[float, float]:
-    """Fraction of 10-degree bins with points, and the largest empty gap in degrees."""
-    if len(angles) == 0:
+    """
+    Fraction of the circumference that was seen, and the largest empty gap in degrees.
+
+    A gap counts as *unseen* only if it is wider than the gaps that randomly placed points
+    leave anyway. For n points spread over a full circle the widest such gap is about
+    360 * (ln n + 0.58) / n degrees, so the tolerance is 360 * (ln n + 1) / n, kept between
+    10 and 60 degrees. Counting occupied 10-degree slices instead would call a sparse stem
+    seen all round (30 points: about 56 % of slices hit) "seen from one side".
+    Every large gap is subtracted, so a stem seen from two opposite sides scores about 50 %.
+    """
+    n = len(angles)
+    if n == 0:
         return 0.0, 360.0
-    bins = np.floor((angles + np.pi) / (2 * np.pi) * _ANGLE_BINS).astype(int) % _ANGLE_BINS
-    occupied = np.zeros(_ANGLE_BINS, dtype=bool)
-    occupied[bins] = True
-    coverage = occupied.mean()
-    a = np.sort(np.degrees(angles))
+    a = np.sort(np.degrees(np.asarray(angles, dtype=float)))
     gaps = np.diff(np.concatenate([a, [a[0] + 360.0]]))
-    return float(coverage), float(gaps.max())
+    tol = float(np.clip(360.0 * (np.log(max(n, 2)) + 1.0) / n, 10.0, 60.0))
+    unseen = float(gaps[gaps > tol].sum())
+    return float(np.clip(1.0 - unseen / 360.0, 0.0, 1.0)), float(gaps.max())
 
 
 # --------------------------------------------------------------------------- main entry
@@ -659,7 +668,10 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
         hw = round(hw + 0.1, 3)
         if hw > top + 1e-9:
             break
-        wide = replace(params, band_half_width=hw)
+        try:
+            wide = replace(params, band_half_width=hw)
+        except ParameterError:
+            break  # the window cannot grow further under the current settings
         if len(band_points(np.asarray(points, dtype=float), wide)) <= 1.1 * n_base:
             continue  # the extra height holds no new points (e.g. above the segmented slice)
         try:
@@ -674,6 +686,7 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
             break
 
     if best is not None and (base is None or best.arc_coverage >= base.arc_coverage + 0.10):
+        best.dbh_method = "taller window (taper)"
         where = f"breast height +/-{best.band_half_width:.2f} m"
         if base is None:
             best.notes.append(

@@ -125,3 +125,30 @@ def test_csv_has_view_sd_in_the_output_unit(tmp_path):
             [r], tmp_path / f"{unit}.csv", ExportContext(units=unit)
         )
         assert next(csv.DictReader(out.open()))["view_sd"] == expected
+
+
+@pytest.mark.parametrize("n", [30, 40, 60])
+def test_sparse_stem_seen_all_round_is_not_flagged(n):
+    """Coverage must not depend on point density (slice counting flagged 79 % at 30 points)."""
+    flagged = 0
+    for i in range(40):
+        rng = np.random.default_rng(i)
+        f = fit_stem(round_stem(rng, n=n), FitParams(seed=i))
+        assert f.arc_coverage > 0.8
+        flagged += any("arc coverage" in w for w in f.warnings)
+    assert flagged == 0
+
+
+@pytest.mark.parametrize("n", [40, 800])
+def test_partial_view_is_measured_at_any_density(n):
+    f = fit_stem(round_stem(np.random.default_rng(1), arc=np.pi, n=n), FitParams())
+    assert f.arc_coverage == pytest.approx(0.5, abs=0.06)
+
+
+def test_two_opposite_sides_count_as_half():
+    rng = np.random.default_rng(2)
+    t = np.r_[
+        rng.uniform(-np.pi / 4, np.pi / 4, 400), rng.uniform(3 * np.pi / 4, 5 * np.pi / 4, 400)
+    ]
+    pts = np.c_[0.2 * np.cos(t), 0.2 * np.sin(t), rng.uniform(1.05, 1.55, 800)]
+    assert fit_stem(pts, FitParams()).arc_coverage == pytest.approx(0.5, abs=0.05)

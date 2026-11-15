@@ -1198,6 +1198,7 @@ def main():
             "inlier_ratio",
             "tilt_deg",
             "n_band_points",
+            "dbh_method",
             "message",
         ]
         cols += [c for c in df.columns if c.startswith("basal_area")] + [

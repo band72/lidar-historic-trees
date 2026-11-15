@@ -159,3 +159,23 @@ def test_csv_reports_the_window_used_and_the_note(tmp_path):
     assert float(row["band_half_width"]) == pytest.approx(f.band_half_width, abs=1e-4)
     assert float(row["band_half_width"]) > 0.25
     assert "completed" in row["message"]
+
+
+def test_windows_taller_than_one_metre_work():
+    """The app allows up to 1.2 m; windows above 1.0 m used to fail as 'internal error'."""
+    pts = stem(np.random.default_rng(7), 0.4, rate=40, width=100, z_range=(0.2, 3.0))
+    f = fit_stem(
+        pts,
+        FitParams(
+            complete_partial_stems=True, max_band_half_width=1.2, complete_target_coverage=1.0
+        ),
+    )
+    assert f.band_half_width > 1.0 and f.dbh_method == "taller window (taper)"
+
+
+def test_dbh_method_marks_completed_stems():
+    pts = stem(np.random.default_rng(8), 0.4)
+    assert fit_stem(pts, FitParams()).dbh_method == "breast-height band"
+    assert (
+        fit_stem(pts, FitParams(complete_partial_stems=True)).dbh_method == "taller window (taper)"
+    )

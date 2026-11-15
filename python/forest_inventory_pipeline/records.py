@@ -61,6 +61,8 @@ class TreeRecord:
     ci_high: float = float("nan")
     confidence: float = float("nan")
     ci_method: str = ""
+    #: "breast-height band", or "taller window (taper)" for a completed partly seen stem
+    dbh_method: str = ""
     n_band_points: int = 0
     #: half-height of the measurement window (m); larger than the standard band when a partly
     #: seen stem was completed from a taller window (``fit.complete_partial_stems``)
@@ -151,6 +153,7 @@ CORE_COLUMNS = [
     "ci_high",
     "confidence",
     "ci_method",
+    "dbh_method",
     "n_points",
     "n_band_points",
     "band_half_width",

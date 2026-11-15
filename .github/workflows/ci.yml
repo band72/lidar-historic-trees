@@ -14,11 +14,19 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    name: test (${{ matrix.os }}, py${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.12"]
+        include:
+          - {os: ubuntu-24.04, python: "3.10"}
+          - {os: ubuntu-24.04, python: "3.12"}
+          # Windows too, so a Windows-only failure shows up on every push, not first at release
+          - {os: windows-2022, python: "3.12"}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +36,7 @@ jobs:
           cache: pip
 
       - name: System libraries for Open3D
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgomp1
 
       - name: Install (builds the quickshift++ extension)
@@ -36,6 +45,7 @@ jobs:
           pip install ".[test,app,las]" rosbags ruff
 
       - name: Lint new modules
+        if: runner.os == 'Linux'
         run: >
           ruff check
           python/forest_inventory_pipeline/app

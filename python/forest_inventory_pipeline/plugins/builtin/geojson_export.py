@@ -32,6 +32,7 @@ _PROPS = (
     "ci_high",
     "dbh_se",
     "confidence",
+    "dbh_method",
     "ground_z",
     "bh_elevation",
     "arc_coverage",
