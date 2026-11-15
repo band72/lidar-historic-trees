@@ -2,6 +2,10 @@ add_library(quickshift STATIC)
 target_sources(quickshift PRIVATE cluster_remaining.cpp compute_cores.cpp graph_basic.cpp graph.cpp)
 target_link_libraries(quickshift PUBLIC Eigen3::Eigen progress)
 target_compile_features(quickshift PUBLIC cxx_std_20)
+if(MSVC)
+  # MSVC: warnings on, large objects (Eigen), conforming mode. GNU flags below would be ignored or misread.
+  target_compile_options(quickshift PRIVATE /W3 /bigobj /permissive- /EHsc)
+else()
 target_compile_options(
   quickshift
   PRIVATE # GNU
@@ -15,5 +19,6 @@ target_compile_options(
           # $<$<COMPILE_LANGUAGE:CXX>:-Wconversion>
           $<$<COMPILE_LANGUAGE:CXX>:-Wdisabled-optimization>
           $<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>)
+endif()
 
 target_include_directories(quickshift PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

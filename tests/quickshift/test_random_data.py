@@ -4,6 +4,13 @@ import pytest
 from forest_inventory_pipeline.cluster.quickshiftpp import QuickshiftPP
 
 
+@pytest.fixture(autouse=True)
+def _seed():
+    # the data below is random; unseeded, an occasional outlier is labelled noise (-1)
+    # and test_random fails by chance (seen in CI: 99 == 100)
+    np.random.seed(0)
+
+
 class TestRandomData:
     def test_random(self):
         cluster_len = 100

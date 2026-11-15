@@ -533,14 +533,118 @@ def demo_data(
     logger.info(f"wrote {output} ({len(plot.points):,} points) and {truth_fp}")
 
 
+@cli.command("self-test")
+def self_test(
+    skip_app: Annotated[bool, typer.Option("--skip-app", help="Skip the headless web app check.")] = False,
+):
+    """Check this installation: plugins, full pipeline on a demo plot, exports, and the web app."""
+    import sys
+    import tempfile
+    import time
+
+    import numpy as np
+
+    from . import inventory as inv
+    from .plugins import load_plugins
+    from .synthetic import make_plot
+    from .traits.dbh.robust_fit import FitParams
+
+    failures: list[str] = []
+
+    def check(name: str, fn):
+        t0 = time.perf_counter()
+        try:
+            detail = fn()
+            logger.info(f"[green]PASS[/green] {name} ({time.perf_counter() - t0:.1f}s) {detail or ''}")
+        except Exception as exc:  # report every failure, keep checking
+            failures.append(name)
+            logger.error(f"FAIL {name}: {type(exc).__name__}: {exc}")
+            logger.debug("details", exc_info_str(exc))
+
+    state: dict = {}
+
+    def plugins_ok():
+        reg = load_plugins()
+        missing = {"csv", "dxf"} - set(reg.exporters) | ({"open3d", "las", "rosbag"} - set(reg.readers))
+        if missing or reg.load_errors:
+            raise RuntimeError(f"missing {sorted(missing)} errors {reg.load_errors}")
+        return f"readers={len(reg.readers)} exporters={len(reg.exporters)} metrics={len(reg.metrics)}"
+
+    def pipeline_ok():
+        plot = make_plot(n_trees=10, seed=0)
+        gp, sp, fp = inv.GroundParams(), inv.SegmentParams(), FitParams()
+        ground, non_ground = inv.segment_ground(plot.points, gp)
+        normalized = inv.normalize_heights(ground, non_ground, gp)
+        pts, labels = inv.segment_trees(normalized, sp)
+        recs = inv.fit_trees(inv.group_trees(pts, labels, sp.min_tree_points), ground, fp, gp)
+        truth = np.array([[t["x"], t["y"], t["dbh"]] for t in plot.truth])
+        errs = []
+        for r in recs:
+            if r.fitted:
+                d = np.hypot(truth[:, 0] - r.x, truth[:, 1] - r.y)
+                if d.min() < 0.5:
+                    errs.append(r.dbh - truth[d.argmin(), 2])
+        if len(errs) < 8:
+            raise RuntimeError(f"only {len(errs)}/10 trees found")
+        rmse = float(np.sqrt(np.mean(np.square(errs))))
+        if rmse > 0.01:
+            raise RuntimeError(f"DBH RMSE {rmse * 100:.2f} cm is too high")
+        state["records"], state["fp"] = recs, fp
+        return f"{len(errs)}/10 trees, RMSE {rmse * 100:.2f} cm"
+
+    def exports_ok():
+        with tempfile.TemporaryDirectory() as td:
+            out = inv.export_records(state["records"], Path(td), ["csv", "dxf"], inv.context_for("self-test", state["fp"]))
+            if len(out) != 2 or not all(p.stat().st_size > 0 for p in out):
+                raise RuntimeError(f"exports incomplete: {out}")
+        return "csv, dxf"
+
+    def app_ok():
+        from streamlit.testing.v1 import AppTest
+
+        from .app.launch import APP_SCRIPT
+
+        # the app keeps its log file open; Windows cannot delete open files, so ignore cleanup errors
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as td:
+            import os
+
+            old = os.environ.get("FIP_HOME")
+            os.environ["FIP_HOME"] = td
+            try:
+                at = AppTest.from_file(str(APP_SCRIPT), default_timeout=300)
+                at.run()
+                at.sidebar.number_input[0].set_value(8)
+                at.button[0].click().run()
+            finally:
+                if old is None:
+                    os.environ.pop("FIP_HOME", None)
+                else:
+                    os.environ["FIP_HOME"] = old
+            if at.exception or at.error:
+                raise RuntimeError([str(e.value)[:300] for e in list(at.exception) + list(at.error)])
+            fitted = next(m.value for m in at.metric if m.label == "Trees fitted")
+        return f"demo run, trees fitted {fitted}"
+
+    check("plugins", plugins_ok)
+    check("pipeline", pipeline_ok)
+    if "records" in state:
+        check("exports", exports_ok)
+    if not skip_app:
+        check("web app", app_ok)
+    if failures:
+        logger.error(f"self-test failed: {', '.join(failures)}")
+        sys.exit(1)
+    logger.info("self-test passed")
+
+
 @cli.command()
 def app(
-    port: Annotated[int, typer.Option(help="Port for the web interface.")] = 8501,
+    port: Annotated[int, typer.Option(help="Port for the web interface (next free port is used if taken).")] = 8501,
     plugin_dir: Annotated[Optional[list[Path]], typer.Option("--plugin-dir", help="Extra plugin folder(s).")] = None,
+    no_browser: Annotated[bool, typer.Option("--no-browser", help="Do not open a browser window.")] = False,
+    address: Annotated[str, typer.Option(help="Interface to listen on; 0.0.0.0 shares it on the network.")] = "127.0.0.1",
 ):
-    """Launch the interactive web interface (needs the [app] extra)."""
-    import os
-    import subprocess
+    """Launch the interactive web interface (needs the app extra when installed with pip)."""
     import sys
 
     try:
@@ -548,16 +652,13 @@ def app(
     except ImportError:
         logger.error("the web app needs streamlit: pip install 'forest_inventory_pipeline[app]'")
         sys.exit(2)
-    script = Path(__file__).parent / "app" / "streamlit_app.py"
-    env = dict(os.environ)
-    if plugin_dir:
-        from .plugins.registry import ENV_VAR
+    from .app.launch import run_app
 
-        env[ENV_VAR] = os.pathsep.join([str(p.resolve()) for p in plugin_dir] + ([env[ENV_VAR]] if env.get(ENV_VAR) else []))
-    cmd = [sys.executable, "-m", "streamlit", "run", str(script), "--server.port", str(port)]
-    logger.info("starting:", " ".join(cmd))
-    sys.exit(subprocess.call(cmd, env=env))
-
+    try:
+        run_app(port=port, open_browser=not no_browser, plugin_dirs=plugin_dir, address=address)
+    except (RuntimeError, FileNotFoundError) as exc:
+        logger.error(str(exc))
+        sys.exit(2)
 
 if __name__ == "__main__":
     cli()

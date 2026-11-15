@@ -11,6 +11,17 @@
 
 </div>
 
+## Download
+
+Ready-to-run installers, with no Python needed. All releases are on the [releases page](https://github.com/band72/lidar-historic-trees/releases/latest).
+
+| Platform | Download | Install |
+|---|---|---|
+| Windows 10/11 (64-bit) | [LiDAR-Tree-Inventory-0.1.0-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.0/LiDAR-Tree-Inventory-0.1.0-windows-x64-setup.exe) | Run it (no admin needed), then start **LiDAR Tree Inventory** from the Start menu |
+| Linux x86_64 (Ubuntu 22.04+, Debian 12+, Fedora 36+) | [LiDAR-Tree-Inventory-0.1.0-linux-x86_64.tar.gz](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.0/LiDAR-Tree-Inventory-0.1.0-linux-x86_64.tar.gz) | `tar xzf LiDAR-Tree-Inventory-*.tar.gz && cd LiDAR-Tree-Inventory-*/ && ./install.sh` |
+
+The program opens the web interface in your browser. `fip --help` gives the command line, and `fip self-test` checks an installation. For how the installers are built, see [`packaging/README.md`](packaging/README.md).
+
 ## Setup
 
 A docker image is provided and details are described in the [Docker](#docker) section below.

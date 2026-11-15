@@ -4,3 +4,4 @@ cpp_build/
 .venv/
 .pytest_cache/
 fip_output/
+dist/

@@ -1,0 +1,157 @@
+name: Release installers
+
+# Push a tag like v0.1.0 to build both installers and publish a GitHub Release.
+# Run manually (Actions -> Release installers -> Run workflow) to build without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-22.04 # glibc 2.35: oldest that the Open3D CPU wheel supports
+            open3d: open3d-cpu
+          - os: windows
+            runner: windows-2022
+            open3d: open3d
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}"; else V="0.0.0-dev.${GITHUB_RUN_NUMBER}"; fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Building version $V"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: System libraries (Linux)
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libgomp1
+
+      - name: Install dependencies and build the package (compiles quickshift++)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ${{ matrix.open3d }} -r packaging/requirements-build.txt pytest pytest-datadir
+          pip install --no-deps --no-build-isolation -v . 2>&1 | tail -20
+          python -c "import forest_inventory_pipeline.cluster as c, open3d; print('quickshift ok, open3d', open3d.__version__)"
+
+      - name: Tests
+        env:
+          LOG_LEVEL: warn
+        run: python -m pytest -q tests -p no:cacheprovider
+
+      - name: Freeze with PyInstaller
+        run: |
+          python packaging/make_icon.py
+          pyinstaller packaging/fip.spec --noconfirm --distpath dist --workpath build/pyinstaller
+
+      - name: Self-test the frozen program
+        env:
+          LOG_LEVEL: info
+        run: |
+          if [[ "${{ matrix.os }}" == "windows" ]]; then FIP=dist/lidar-tree-inventory/fip.exe; else FIP=dist/lidar-tree-inventory/fip; fi
+          "$FIP" --help
+          "$FIP" self-test
+          mkdir -p smoke && cd smoke
+          "../$FIP" demo-data plot.ply --n-trees 10
+          "../$FIP" inventory plot.ply -o out --plugin-dir ../dist/lidar-tree-inventory/_internal/plugins -e csv -e dxf -e geojson
+          test -s out/trees.csv && test -s out/trees.dxf && test -s out/trees.geojson
+
+      - name: Package (Linux .tar.gz with installer)
+        if: matrix.os == 'linux'
+        run: |
+          V=${{ steps.v.outputs.version }}
+          NAME=LiDAR-Tree-Inventory-$V-linux-x86_64
+          mkdir -p "stage/$NAME"
+          cp -a dist/lidar-tree-inventory "stage/$NAME/"
+          cp packaging/linux/install.sh packaging/assets/icon.png LICENSE "stage/$NAME/"
+          cp packaging/linux/README.txt "stage/$NAME/README.txt"
+          echo "$V" > "stage/$NAME/VERSION"
+          chmod +x "stage/$NAME/install.sh"
+          tar -C stage -czf "dist/$NAME.tar.gz" "$NAME"
+          # prove the installer works on the runner
+          HOME="$RUNNER_TEMP/home" bash "stage/$NAME/install.sh"
+          "$RUNNER_TEMP/home/.local/bin/fip" self-test --skip-app
+          bash "$RUNNER_TEMP/home/.local/share/lidar-tree-inventory/uninstall.sh"
+          (cd dist && sha256sum "$NAME.tar.gz" > "$NAME.tar.gz.sha256")
+          ls -la dist
+
+      - name: Package (Windows setup .exe)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $v = "${{ steps.v.outputs.version }}"
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; }
+          & $iscc "/DAppVersion=$v" "/DSourceDir=..\..\dist\lidar-tree-inventory" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          $setup = Get-ChildItem dist\*-setup.exe | Select-Object -First 1
+          # prove the installer works on the runner: silent per-user install, run, uninstall
+          $dir = "$env:RUNNER_TEMP\fip-install"
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /DIR=`"$dir`" /TASKS=addtopath /LOG=`"$env:RUNNER_TEMP\setup.log`"" -Wait
+          & "$dir\fip.exe" self-test --skip-app
+          if ($LASTEXITCODE -ne 0) { Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40; throw "installed program failed self-test" }
+          Start-Process "$dir\unins000.exe" -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES" -Wait
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($setup.Name)" | Out-File -Encoding ascii "$($setup.FullName).sha256"
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*-setup.exe
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -la assets
+          cat > notes.md <<'EOF'
+          ## Downloads
+
+          | Platform | File | How to install |
+          |---|---|---|
+          | Windows 10/11 (64-bit) | `LiDAR-Tree-Inventory-*-windows-x64-setup.exe` | Run it. No admin rights needed. Start **LiDAR Tree Inventory** from the Start menu. |
+          | Linux x86_64 (glibc 2.35+: Ubuntu 22.04, Debian 12, Fedora 36 or newer) | `LiDAR-Tree-Inventory-*-linux-x86_64.tar.gz` | `tar xzf <file> && cd LiDAR-Tree-Inventory-* && ./install.sh`, then start it from the applications menu, or run `fip` |
+
+          The program opens the web interface in your browser. The console window shows the log; close it to stop the app.
+          Command line: `fip --help`. Check an installation: `fip self-test`.
+
+          The `.sha256` files hold checksums for verifying the downloads.
+          EOF
+          gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --title "LiDAR Tree Inventory $TAG" --notes-file notes.md

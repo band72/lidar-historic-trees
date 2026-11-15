@@ -34,7 +34,23 @@ from forest_inventory_pipeline.synthetic import make_plot
 from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams, band_points, residuals
 from forest_inventory_pipeline.utils import logger
 
-LOG_DIR = Path.cwd() / "fip_output"
+def _log_dir() -> Path:
+    """Per-user log folder for installed (frozen) builds; ./fip_output when run from source."""
+    import os
+    import sys
+
+    if os.environ.get("FIP_HOME"):
+        return Path(os.environ["FIP_HOME"]) / "logs"
+    if getattr(sys, "frozen", False):
+        if sys.platform == "win32":
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+            return base / "LiDARTreeInventory" / "logs"
+        base = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+        return base / "lidar-tree-inventory" / "logs"
+    return Path.cwd() / "fip_output"
+
+
+LOG_DIR = _log_dir()
 LOG_FILE = LOG_DIR / "app.log"
 
 # status palette (fixed) + marker shape + label: status is never carried by colour alone

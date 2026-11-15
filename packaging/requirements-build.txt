@@ -1,0 +1,18 @@
+# Runtime + build dependencies for the installer builds (see packaging/README.md).
+# open3d itself is installed separately: open3d-cpu on Linux (no CUDA, ~4x smaller), open3d on Windows.
+typer[all]
+cloth-simulation-filter
+numpy
+scipy
+scikit-learn
+pyyaml
+tqdm
+streamlit>=1.30
+plotly>=5.18
+pandas>=2.0
+ezdxf>=1.1
+laspy[lazrs]>=2.4
+rosbags
+pyinstaller>=6.10
+scikit-build-core
+pybind11
