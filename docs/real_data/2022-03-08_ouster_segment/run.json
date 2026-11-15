@@ -1,0 +1,114 @@
+{
+  "software": {
+    "name": "LiDAR Tree Inventory",
+    "version": "0.1.0",
+    "python": "3.12.3",
+    "platform": "Linux-7.0.0-43-generic-x86_64-with-glibc2.39"
+  },
+  "created_utc": "2026-11-15T18:57:30+00:00",
+  "source": "segment_0-120s.laz",
+  "output_units": "m",
+  "crs": null,
+  "breast_height_m": 1.3,
+  "confidence": 0.95,
+  "summary": {
+    "total": 162,
+    "ok": 6,
+    "warning": 8,
+    "failed": 148,
+    "mean_dbh": 0.4810668137397963,
+    "basal_area_m2": 3.9948399717126373
+  },
+  "outputs": [
+    {
+      "exporter": "csv",
+      "options": {},
+      "file": "trees.csv",
+      "bytes": 30327,
+      "sha256": "2eabe77832080cfc874ee5aa465c3f25c17827a9a36ef7f5ba73b4be51075d2b"
+    },
+    {
+      "exporter": "dxf",
+      "options": {},
+      "file": "trees.dxf",
+      "bytes": 71626,
+      "sha256": "1558fc501c1643cadae989b07e5af8029d9e1f3fc11eddab573fa36e6b6eaf11"
+    },
+    {
+      "exporter": "geojson",
+      "options": {},
+      "file": "trees.geojson",
+      "bytes": 13384,
+      "sha256": "3899c04e51c2fde87f0acbf19ddc879a75250d4189b7c86989c776957c29ee98"
+    },
+    {
+      "exporter": "points",
+      "options": {},
+      "file": "trees.laz",
+      "bytes": 52028332,
+      "sha256": "213ce60bac7e4e40038431a06d0cca0957e9140cdc0bfa22ba41ff4b79fb3d04"
+    }
+  ],
+  "errors": [],
+  "parameters": {
+    "fit": {
+      "breast_height": 1.3,
+      "band_half_width": 0.25,
+      "min_band_points": 30,
+      "ransac_iterations": 2000,
+      "inlier_tolerance": 0.02,
+      "min_radius": 0.025,
+      "max_radius": 0.75,
+      "max_tilt_deg": 22.5,
+      "lsq_iterations": 50,
+      "kernel_scale": 0.03,
+      "confidence": 0.95,
+      "model_sd": 0.005,
+      "ci_method": "analytic",
+      "n_bootstrap": 200,
+      "bootstrap_block": "sector",
+      "n_sectors": 12,
+      "min_arc_coverage": 0.6,
+      "ovality_sd": 0.03,
+      "complete_partial_stems": false,
+      "max_band_half_width": 0.75,
+      "reject_non_stems": true,
+      "min_stem_dominance": 0.5,
+      "min_stem_continuity": 0.8,
+      "max_interior_fraction": 0.2,
+      "stem_check_top": 2.5,
+      "min_surface_density": 600.0,
+      "min_trunk_inlier_ratio": 0.2,
+      "complete_target_coverage": 0.85,
+      "max_relative_ci_width": 0.25,
+      "min_inlier_ratio": 0.3,
+      "split_stems": true,
+      "stem_gap": 0.15,
+      "seed": 0
+    },
+    "ground": {
+      "cloth_resolution": 0.5,
+      "class_threshold": 0.5,
+      "rigidness": 3,
+      "time_step": 0.65,
+      "iterations": 500,
+      "slope_smooth": false,
+      "idw_k": 5,
+      "idw_p": 2.0,
+      "idw_rmax": 10.0,
+      "refine_tolerance": 0.15,
+      "refine_cell": 1.0,
+      "source": "auto"
+    },
+    "segment": {
+      "k": 150,
+      "beta": 0.5,
+      "voxel_size": 0.15,
+      "min_z": 1.0,
+      "max_z": 4.0,
+      "upsample": true,
+      "min_tree_points": 50
+    },
+    "input_units": "m"
+  }
+}

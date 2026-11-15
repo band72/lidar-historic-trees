@@ -45,7 +45,7 @@ It builds on the ICRA 2024 research code [PRBonn/forest_inventory_pipeline](http
 
 ### Windows 10 / 11 (64-bit)
 
-1. Download **[LiDAR-Tree-Inventory-0.1.3-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.3/LiDAR-Tree-Inventory-0.1.3-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
+1. Download **[LiDAR-Tree-Inventory-0.1.4-windows-x64-setup.exe](https://github.com/band72/lidar-historic-trees/releases/download/v0.1.4/LiDAR-Tree-Inventory-0.1.4-windows-x64-setup.exe)** from the [latest release](https://github.com/band72/lidar-historic-trees/releases/latest).
 2. Run it. No administrator rights are needed: it installs for your user by default. On the first screen you can choose *Install for all users* instead, which needs admin.
 3. Optional tasks during setup:
    - **Create a desktop shortcut**
@@ -62,9 +62,9 @@ Requires glibc 2.35 or newer: Ubuntu 22.04+, Debian 12+, Fedora 36+, Linux Mint 
 
 ```bash
 # download (or use the link on the release page)
-wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.3/LiDAR-Tree-Inventory-0.1.3-linux-x86_64.tar.gz
-tar xzf LiDAR-Tree-Inventory-0.1.3-linux-x86_64.tar.gz
-cd LiDAR-Tree-Inventory-0.1.3-linux-x86_64
+wget https://github.com/band72/lidar-historic-trees/releases/download/v0.1.4/LiDAR-Tree-Inventory-0.1.4-linux-x86_64.tar.gz
+tar xzf LiDAR-Tree-Inventory-0.1.4-linux-x86_64.tar.gz
+cd LiDAR-Tree-Inventory-0.1.4-linux-x86_64
 ./install.sh                 # for your user, no root needed
 # or: sudo ./install.sh --system    (all users, installs to /opt)
 ```
@@ -562,7 +562,7 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 ### Tested on real data
 
-The pipeline has been run on a real 2-minute segment from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
+The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
 
 - Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. With it, 14 remain, and the clear trunks among them have crisp single rings at breast height. Four of the 14 are posts holding a roof, which no geometric trunk check can tell from small trunks.
 - The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
