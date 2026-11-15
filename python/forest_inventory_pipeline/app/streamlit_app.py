@@ -508,6 +508,23 @@ def sidebar_fit() -> FitParams | None:
         )
         relw = st.slider("Max CI width (% of DBH)", 1, 100, 25, 1)
         inl = st.slider("Min inlier ratio", 0.0, 1.0, 0.3, 0.05)
+    with s.expander("Trunk check"):
+        trunk_check = st.toggle(
+            "Reject clusters that are not trunks",
+            True,
+            help="Shrubs, posts, walls and sparse scatter are rejected: a trunk must have most "
+            "of its 1-2.5 m points on a hollow, continuous, dense surface.",
+        )
+        density = st.slider(
+            "Min. points per m² of trunk surface",
+            0,
+            2000,
+            600,
+            50,
+            disabled=not trunk_check,
+            help="Lower it for sparse scans (UAV, distant TLS: about 150). Too low lets sparse "
+            "scatter through as large 'trees'.",
+        )
     with s.expander("Partly seen stems"):
         complete = st.toggle(
             "Complete partly seen stems",
@@ -560,6 +577,8 @@ def sidebar_fit() -> FitParams | None:
             min_arc_coverage=cov,
             ovality_sd=ovality / 100,
             complete_partial_stems=complete,
+            reject_non_stems=trunk_check,
+            min_surface_density=float(density),
             max_band_half_width=max(max_hw, hw),
             max_relative_ci_width=relw / 100,
             min_inlier_ratio=inl,

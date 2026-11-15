@@ -547,11 +547,27 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - **bootstrap**: refits the stem many times on resampled angular sectors and takes the percentile interval. Slower, with fewer assumptions.
    - Both methods add the **systematic uncertainty** `model_sd` in quadrature. This covers error the scan can't reveal: non-circular stems, taper, segmentation mistakes.
    - Stems seen from one side also get the **unseen-part allowance** `view_sd` ([details](#stems-that-are-only-partly-visible)).
-6. **Quality flags.** A tree becomes a *warning* when its arc coverage is below 60 % (seen from one side, with a wider interval), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
+6. **Trunk check.** On real mobile-lidar data most raw clusters are not trunks: shrubs, fence posts, walls, foliage and sparse scatter. Fitting a circle to them gives confident-looking nonsense (DBH up to the 150 cm limit). A cluster is accepted as a tree only if, between 1.0 and 2.5 m:
+   - most of its points (≥ 50 %, `min_stem_dominance`) lie on the fitted trunk surface;
+   - that surface continues through ≥ 80 % of the height (`min_stem_continuity`), which posts, stumps and shrubs fail;
+   - the inside is empty at breast height (≤ 20 % of points inside 60 % of the radius, `max_interior_fraction`), which foliage fails;
+   - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails.
+
+   Rejected clusters are listed as `failed` with the reason (*"not trunk-like: ..."*). **Lower `min_surface_density` for sparse scans** (about 150 for UAV or distant terrestrial scans), or switch the check off with `reject_non_stems: false`. Known limit: man-made poles (posts holding a roof, signposts) are hollow vertical cylinders and pass.
+7. **Quality flags.** A tree becomes a *warning* when its arc coverage is below 60 % (seen from one side, with a wider interval), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
 
 On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, no false detections, DBH RMSE about 0.25 cm, and the 95 % interval contained the true DBH for every tree. **Real scans have larger errors, so calibrate before relying on the intervals.**
 
 ---
+
+### Tested on real data
+
+The pipeline has been run on a real 2-minute segment from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
+
+- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. With it, 14 remain, and the clear trunks among them have crisp single rings at breast height. Four of the 14 are posts holding a roof, which no geometric trunk check can tell from small trunks.
+- The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
+- Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
+- No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
 
 ### Stems that are only partly visible
 
@@ -640,6 +656,8 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Many `warning: low arc coverage`** | The stems were scanned from one side (less than 60 % of the circumference). Their intervals are already widened for this, but strongly oval stems can still be off by more: see [Stems that are only partly visible](#stems-that-are-only-partly-visible). Scan from more positions |
 | **Half the trunk is missing in the scan** | It is measured, flagged `warning` and given a wider interval. If the scanner moved, `--complete-partial` can complete it from other heights; see [Stems that are only partly visible](#stems-that-are-only-partly-visible) |
 | **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
+| **Real trees rejected as "not trunk-like: only N points per m²"** | Your scanner is sparser than the default assumes: lower `fit.min_surface_density` (app: *Trunk check*), e.g. to 150 |
+| **Many "trees" that are shrubs, posts or walls** | Keep the trunk check on (default); raise `min_surface_density` or `min_stem_dominance` if some still get through |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
 | **ROS bag: "several PointCloud2 topics"** | Choose one with `-R topic=/name` |
@@ -658,7 +676,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 136 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 147 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```

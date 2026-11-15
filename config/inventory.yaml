@@ -35,6 +35,11 @@ fit:
   max_tilt_deg: 22.5
   ransac_iterations: 2000
   min_arc_coverage: 0.6   # quality flags: stems scanned from fewer sides than this get a warning
+  reject_non_stems: true       # reject shrubs, posts, walls, sparse scatter (trunk check)
+  min_surface_density: 600     # points per m^2 on the seen trunk surface; ~150 for sparse scans
+  min_stem_dominance: 0.5      # share of 1-2.5 m points on the trunk surface
+  min_stem_continuity: 0.8     # share of 10 cm slices 1-2.5 m with trunk-surface points
+  max_interior_fraction: 0.2   # share of breast-height points filling the inside
   complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
   max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems

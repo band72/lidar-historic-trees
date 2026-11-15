@@ -63,31 +63,42 @@ def interpolate_ground_z(
     k = min(k, len(ground_xyz))
     if kdtree is None:
         kdtree = KDTree(data=ground_xyz[:, :2])
-    dist, idx = kdtree.query(query_xy[:, :2], k=k, p=2, distance_upper_bound=rmax, workers=-1)
-    dist = np.asarray(dist, dtype=float).reshape(len(query_xy), k)
-    idx = np.asarray(idx).reshape(len(query_xy), k)
+    # query in blocks: k neighbours x (distance, index, weight) for tens of millions of points
+    # at once peaked at +7 GB on a 45 M point field cloud
+    z_interp = np.empty(len(query_xy), dtype=float)
+    n_invalid = 0
+    for s in range(0, len(query_xy), _BLOCK):
+        q = query_xy[s : s + _BLOCK, :2]
+        z_interp[s : s + len(q)], bad = _idw_block(kdtree, search_z, q, k, p, rmax)
+        n_invalid += bad
+    if n_invalid:
+        logger.debug(
+            f"no ground neighbour within rmax={rmax} for {n_invalid} points;"
+            " used the single closest ground point"
+        )
+    return z_interp
 
+
+_BLOCK = 2_000_000
+
+
+def _idw_block(kdtree, search_z, q, k, p, rmax):
+    dist, idx = kdtree.query(q, k=k, p=2, distance_upper_bound=rmax, workers=-1)
+    dist = np.asarray(dist, dtype=float).reshape(len(q), k)
+    idx = np.asarray(idx).reshape(len(q), k)
     invalid = np.flatnonzero(np.isinf(dist[:, 0]))
     if invalid.size:
-        logger.debug(
-            f"no ground neighbour within rmax={rmax} for {invalid.size} points;"
-            " using the single closest ground point"
-        )
-        patch_dist, patch_idx = kdtree.query(query_xy[invalid, :2], k=1, p=2, workers=-1)
+        patch_dist, patch_idx = kdtree.query(q[invalid], k=1, p=2, workers=-1)
         dist[invalid, 0] = patch_dist
         idx[invalid, 0] = patch_idx
-
     # out-of-range neighbours have dist=inf -> weight 0; their idx==len(search_z) is clamped
     clean_idx = np.where(idx >= len(search_z), 0, idx)
-    safe_dist = np.maximum(dist, 1e-12)
-    weights = 1.0 / np.power(safe_dist, p)
+    weights = 1.0 / np.power(np.maximum(dist, 1e-12), p)
     weights[np.isinf(dist)] = 0.0
-    z_interp = np.sum(weights * search_z[clean_idx], axis=1) / np.sum(weights, axis=1)
-
-    # exact hits: take that ground point's z directly
-    exact = dist[:, 0] == 0
-    z_interp[exact] = search_z[clean_idx[exact, 0]]
-    return z_interp
+    z = np.sum(weights * search_z[clean_idx], axis=1) / np.sum(weights, axis=1)
+    exact = dist[:, 0] == 0  # exact hits: take that ground point's z directly
+    z[exact] = search_z[clean_idx[exact, 0]]
+    return z, int(invalid.size)
 
 
 @log_scalars_in_arguments()

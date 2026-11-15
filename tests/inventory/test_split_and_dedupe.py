@@ -5,7 +5,7 @@ from forest_inventory_pipeline.records import TreeRecord
 from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams
 
 
-def stem_points(rng, cx, cy, r, n=1500):
+def stem_points(rng, cx, cy, r, n=6000):  # ~1000 pts/m^2, like the field Ouster data
     t = rng.uniform(0, 2 * np.pi, n)
     z = rng.uniform(0.5, 3.5, n)
     return np.c_[cx + r * np.cos(t), cy + r * np.sin(t), z] + rng.normal(0, 0.003, (n, 3))
@@ -19,7 +19,7 @@ def ground(size=20.0):
 
 def test_merged_cluster_is_split_into_both_stems():
     rng = np.random.default_rng(0)
-    merged = np.r_[stem_points(rng, 5, 5, 0.30), stem_points(rng, 8, 5, 0.08, n=600)]
+    merged = np.r_[stem_points(rng, 5, 5, 0.30), stem_points(rng, 8, 5, 0.08, n=2500)]
     fp = FitParams()
     trees, parents = inv.split_multi_stem({7: merged}, fp)
     assert len(trees) == 2
@@ -32,7 +32,7 @@ def test_merged_cluster_is_split_into_both_stems():
 
 def test_split_can_be_disabled():
     rng = np.random.default_rng(1)
-    merged = np.r_[stem_points(rng, 5, 5, 0.30), stem_points(rng, 8, 5, 0.08, n=600)]
+    merged = np.r_[stem_points(rng, 5, 5, 0.30), stem_points(rng, 8, 5, 0.08, n=2500)]
     recs = inv.fit_trees({7: merged}, ground(), FitParams(split_stems=False))
     assert len(recs) == 1
 

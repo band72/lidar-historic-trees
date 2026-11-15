@@ -96,6 +96,23 @@ class FitParams:
     #: so the DBH stays the diameter at breast height. Off by default: it changes measurements.
     complete_partial_stems: bool = False
     max_band_half_width: float = 0.75
+    #: reject clusters that are not trunk-like (shrubs, posts, walls, sparse scatter); see
+    #: ``trunk_features``. On real mobile-lidar data most raw clusters are not trunks.
+    reject_non_stems: bool = True
+    #: share of the cluster's points in the check zone that lie on the fitted trunk surface
+    min_stem_dominance: float = 0.5
+    #: share of 10 cm height slices in the check zone holding enough trunk-surface points
+    min_stem_continuity: float = 0.8
+    #: share of breast-height points inside 60 % of the radius (filled = foliage or shrub)
+    max_interior_fraction: float = 0.2
+    #: the trunk must continue up to this height above ground (m); keep <= segment.max_z
+    stem_check_top: float = 2.5
+    #: points per square metre of the *seen* trunk surface in the breast-height band (within
+    #: inlier_tolerance). Sparse scatter fitted with a big circle falls far below; depends on
+    #: the scanner and distance: lower it for sparse data (e.g. 150 for UAV or distant TLS).
+    min_surface_density: float = 600.0
+    #: at least this share of breast-height points must lie on the fitted surface
+    min_trunk_inlier_ratio: float = 0.2
     #: stop widening once this fraction of the circumference is seen (else use the best window)
     complete_target_coverage: float = 0.85
     max_relative_ci_width: float = 0.25
@@ -156,6 +173,13 @@ class FitParams:
         require(0 <= self.model_sd <= 0.2, f"model_sd must be in [0, 0.2] m, got {self.model_sd}")
         require(
             0 <= self.ovality_sd <= 0.3, f"ovality_sd must be in [0, 0.3], got {self.ovality_sd}"
+        )
+        require(0.0 <= self.min_stem_dominance <= 1.0, "min_stem_dominance must be in [0, 1]")
+        require(0.0 <= self.min_stem_continuity <= 1.0, "min_stem_continuity must be in [0, 1]")
+        require(0.0 <= self.max_interior_fraction <= 1.0, "max_interior_fraction must be in [0, 1]")
+        require(self.min_surface_density >= 0.0, "min_surface_density must be >= 0")
+        require(
+            0.0 <= self.min_trunk_inlier_ratio <= 1.0, "min_trunk_inlier_ratio must be in [0, 1]"
         )
         require(
             0.0 < self.complete_target_coverage <= 1.0,
@@ -230,6 +254,11 @@ class StemFit:
     notes: list[str] = field(default_factory=list)
     #: half-height of the measurement window that was used (m)
     band_half_width: float = 0.0
+    #: trunk-likeness measures (see trunk_features)
+    stem_dominance: float = float("nan")
+    surface_density: float = float("nan")
+    stem_continuity: float = float("nan")
+    interior_fraction: float = float("nan")
     #: how the DBH was obtained: "breast-height band" or "taller window (taper)"
     dbh_method: str = "breast-height band"
 
@@ -393,7 +422,10 @@ def refine_cylinder(
             if np.isfinite(cost_c) and cost_c <= cost:
                 theta, e, lam = cand, e_c, max(lam / 3, 1e-9)
                 improved = True
-                if cost - cost_c < 1e-12 * max(cost, 1e-12) or np.linalg.norm(delta) < 1e-7:
+                # converged when the step is below 0.01 mm (or the cost stops improving); the
+                # old 0.1 micrometre limit was never reached on real, noisy scans although the
+                # DBH had stopped changing (iteration-limit warnings on 71 % of field trees)
+                if cost - cost_c < 1e-9 * max(cost, 1e-12) or np.linalg.norm(delta) < 1e-5:
                     return theta, True
                 cost = cost_c
                 break
@@ -485,6 +517,40 @@ def arc_coverage(angles: np.ndarray) -> tuple[float, float]:
 # --------------------------------------------------------------------------- main entry
 
 
+def trunk_features(
+    theta: np.ndarray, points: np.ndarray, params: FitParams
+) -> tuple[float, float, float]:
+    """
+    How trunk-like a fitted cluster is, from all its height-normalized points.
+
+    - dominance: share of points between 1.0 m and ``stem_check_top`` lying on the fitted
+      surface (within max(5 cm, 30 % of the radius)). A lower trunk dominates that zone;
+      shrubs, walls, posts with roofs and foliage spread far beyond the circle.
+    - continuity: share of 10 cm slices of that zone holding at least
+      max(5, 1 % of the zone's surface points) surface points. Trunks continue upward;
+      low shrubs, stumps and short posts stop, and sparse scatter is too thin.
+    - interior: share of breast-height points inside 60 % of the radius. Scanned from
+      outside, a trunk is hollow; a foliage or shrub blob is filled.
+    """
+    r = float(theta[4])
+    e = residuals(theta, points, params.breast_height)  # signed distance to the surface
+    z = points[:, 2]
+    top = max(params.stem_check_top, params.breast_height + 0.5)
+    zone = (z >= 1.0) & (z <= top)
+    near = np.abs(e) < max(0.05, 0.3 * r)
+    if not zone.any():
+        return 0.0, 0.0, 1.0
+    dominance = float(near[zone].mean())
+    surf_z = z[near & zone]
+    need = max(5, int(0.01 * len(surf_z)))
+    edges = np.arange(1.0, top + 1e-9, 0.1)
+    counts = np.histogram(surf_z, bins=edges)[0] if len(edges) > 1 else np.array([len(surf_z)])
+    continuity = float(np.mean(counts >= need))
+    band = np.abs(z - params.breast_height) <= params.band_half_width
+    interior = float(np.mean(e[band] < -0.4 * r)) if band.any() else 1.0
+    return dominance, continuity, interior
+
+
 def band_points(points: np.ndarray, params: FitParams) -> np.ndarray:
     z = points[:, 2]
     mask = np.abs(z - params.breast_height) <= params.band_half_width
@@ -548,12 +614,45 @@ def _fit_window(
             f"fitted radius {r:.3f} m outside [{params.min_radius}, {params.max_radius}] m"
         )
 
+    dominance, continuity, interior = trunk_features(theta, points, params)
+    if params.reject_non_stems:
+        problems = []
+        if dominance < params.min_stem_dominance:
+            problems.append(
+                f"only {dominance:.0%} of points 1-{params.stem_check_top:g} m lie on the trunk surface"
+            )
+        if continuity < params.min_stem_continuity:
+            problems.append(
+                f"trunk surface continuous over only {continuity:.0%} of 1-{params.stem_check_top:g} m"
+            )
+        if interior > params.max_interior_fraction:
+            problems.append(
+                f"{interior:.0%} of breast-height points fill the inside (foliage or shrub?)"
+            )
+        if problems:
+            raise FitError("not trunk-like: " + "; ".join(problems))
+
     e = residuals(theta, band, params.breast_height)
     inlier = np.abs(e) < params.inlier_tolerance
     inlier_ratio = float(inlier.mean())
     rmse = float(np.sqrt(np.mean(e[inlier] ** 2))) if inlier.any() else float("nan")
     angles = _angles(theta, band[inlier], params.breast_height)
     coverage, max_gap = arc_coverage(angles)
+    seen_area = max(coverage, 0.05) * np.pi * 2.0 * r * 2.0 * params.band_half_width
+    surface_density = float(inlier.sum()) / seen_area
+    if params.reject_non_stems:
+        problems = []
+        if surface_density < params.min_surface_density:
+            problems.append(
+                f"only {surface_density:.0f} points per m^2 on the seen trunk surface "
+                f"(need {params.min_surface_density:g}; sparse scatter?)"
+            )
+        if inlier_ratio < params.min_trunk_inlier_ratio:
+            problems.append(
+                f"only {inlier_ratio:.0%} of breast-height points on the fitted surface"
+            )
+        if problems:
+            raise FitError("not trunk-like: " + "; ".join(problems))
 
     dbh = 2.0 * r
     alpha = 1.0 - params.confidence
@@ -629,6 +728,10 @@ def _fit_window(
         converged=converged,
         warnings=warnings,
         band_half_width=params.band_half_width,
+        stem_dominance=dominance,
+        surface_density=surface_density,
+        stem_continuity=continuity,
+        interior_fraction=interior,
     )
 
 

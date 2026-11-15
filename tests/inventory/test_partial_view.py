@@ -9,7 +9,14 @@ from forest_inventory_pipeline.calibration import calibrate
 from forest_inventory_pipeline.errors import ParameterError
 from forest_inventory_pipeline.plugins import ExportContext, load_plugins, registry
 from forest_inventory_pipeline.records import TreeRecord
-from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams, fit_stem
+from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams as _FitParams
+from forest_inventory_pipeline.traits.dbh.robust_fit import fit_stem
+
+
+def FitParams(**kw):  # noqa: N802 - these tests check the fitting maths on short synthetic stems,
+    """so the trunk check (which needs a trunk continuing to 2.5 m) is switched off here."""
+    kw.setdefault("reject_non_stems", False)
+    return _FitParams(**kw)
 
 
 def oval(rng, mean_d, ovality, rot, centre, arc, noise=0.004, n=800):

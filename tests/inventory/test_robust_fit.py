@@ -4,6 +4,14 @@ import pytest
 from forest_inventory_pipeline.errors import FitError, ParameterError
 from forest_inventory_pipeline.traits.dbh import robust_fit as rf
 
+_FitParams = rf.FitParams
+
+
+def FitParams(**kw):  # noqa: N802 - these tests check the fitting maths on short synthetic stems,
+    """so the trunk check (which needs a trunk continuing to 2.5 m) is switched off here."""
+    kw.setdefault("reject_non_stems", False)
+    return _FitParams(**kw)
+
 
 def stem(
     rng, r=0.2, n=800, arc=2 * np.pi, noise=0.004, lean=(0.03, -0.02), c=(3.0, 4.0), clutter=80
@@ -24,7 +32,7 @@ def stem(
 @pytest.mark.parametrize("method", ["analytic", "bootstrap"])
 def test_full_circle_is_accurate(method):
     rng = np.random.default_rng(0)
-    f = rf.fit_stem(stem(rng), rf.FitParams(ci_method=method))
+    f = rf.fit_stem(stem(rng), FitParams(ci_method=method))
     assert f.dbh == pytest.approx(0.4, abs=0.003)
     assert f.ci_low < 0.4 < f.ci_high
     assert f.center_x == pytest.approx(3.0, abs=0.005)
@@ -34,13 +42,13 @@ def test_full_circle_is_accurate(method):
 
 def test_lean_is_recovered():
     rng = np.random.default_rng(1)
-    f = rf.fit_stem(stem(rng, lean=(0.1, 0.0), clutter=0), rf.FitParams())
+    f = rf.fit_stem(stem(rng, lean=(0.1, 0.0), clutter=0), FitParams())
     assert f.tilt_deg == pytest.approx(np.degrees(np.arctan(0.1)), abs=1.0)
 
 
 def test_one_sided_scan_is_flagged():
     rng = np.random.default_rng(2)
-    f = rf.fit_stem(stem(rng, arc=np.pi / 2), rf.FitParams())
+    f = rf.fit_stem(stem(rng, arc=np.pi / 2), FitParams())
     assert f.arc_coverage < 0.4
     assert any("arc coverage" in w for w in f.warnings)
 
@@ -51,7 +59,7 @@ def test_analytic_ci_coverage_on_iid_noise():
     for seed in range(n):
         rng = np.random.default_rng(100 + seed)
         f = rf.fit_stem(
-            stem(rng, n=400, clutter=0), rf.FitParams(model_sd=0.0, confidence=0.9, seed=seed)
+            stem(rng, n=400, clutter=0), FitParams(model_sd=0.0, confidence=0.9, seed=seed)
         )
         covered += f.ci_low <= 0.4 <= f.ci_high
     assert (
@@ -62,16 +70,16 @@ def test_analytic_ci_coverage_on_iid_noise():
 def test_model_sd_widens_interval():
     rng = np.random.default_rng(3)
     pts = stem(rng)
-    narrow = rf.fit_stem(pts, rf.FitParams(model_sd=0.0))
-    wide = rf.fit_stem(pts, rf.FitParams(model_sd=0.01))
+    narrow = rf.fit_stem(pts, FitParams(model_sd=0.0))
+    wide = rf.fit_stem(pts, FitParams(model_sd=0.01))
     assert (wide.ci_high - wide.ci_low) > (narrow.ci_high - narrow.ci_low) + 0.02
 
 
 def test_deterministic_for_same_seed():
     rng = np.random.default_rng(4)
     pts = stem(rng)
-    a = rf.fit_stem(pts, rf.FitParams(ci_method="bootstrap", seed=7), seed_offset=3)
-    b = rf.fit_stem(pts, rf.FitParams(ci_method="bootstrap", seed=7), seed_offset=3)
+    a = rf.fit_stem(pts, FitParams(ci_method="bootstrap", seed=7), seed_offset=3)
+    b = rf.fit_stem(pts, FitParams(ci_method="bootstrap", seed=7), seed_offset=3)
     assert (a.dbh, a.ci_low, a.ci_high) == (b.dbh, b.ci_low, b.ci_high)
 
 
@@ -79,18 +87,18 @@ def test_too_few_points_raises_fit_error():
     rng = np.random.default_rng(5)
     pts = stem(rng, n=20, clutter=0)
     with pytest.raises(FitError, match="breast-height band"):
-        rf.fit_stem(pts, rf.FitParams())
+        rf.fit_stem(pts, FitParams())
 
 
 def test_band_outside_points_raises():
     rng = np.random.default_rng(6)
     with pytest.raises(FitError):
-        rf.fit_stem(stem(rng), rf.FitParams(breast_height=3.0))
+        rf.fit_stem(stem(rng), FitParams(breast_height=3.0))
 
 
 def test_bad_shape_raises():
     with pytest.raises(FitError):
-        rf.fit_stem(np.zeros((10, 2)), rf.FitParams())
+        rf.fit_stem(np.zeros((10, 2)), FitParams())
 
 
 @pytest.mark.parametrize(
@@ -106,7 +114,7 @@ def test_bad_shape_raises():
 )
 def test_params_are_validated(kwargs):
     with pytest.raises(ParameterError):
-        rf.FitParams(**kwargs)
+        FitParams(**kwargs)
 
 
 def test_analytic_jacobian_matches_numeric():
@@ -129,4 +137,4 @@ def test_ransac_rejects_out_of_range_radius():
     rng = np.random.default_rng(8)
     pts = stem(rng, r=0.9, clutter=0)
     with pytest.raises(FitError):
-        rf.fit_stem(pts, rf.FitParams(max_radius=0.5))
+        rf.fit_stem(pts, FitParams(max_radius=0.5))

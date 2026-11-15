@@ -619,7 +619,18 @@ def split_multi_stem(
         if len(band) < 2 * fit.min_band_points:
             out[tid] = pts
             continue
-        labels = DBSCAN(eps=fit.stem_gap, min_samples=5).fit_predict(band[:, :2])
+        # DBSCAN on 2 cm cells, not raw points: at 1 cm spacing every raw point has hundreds
+        # of neighbours within stem_gap, and a 3 M-point field cluster took ~8 GB. Gaps of
+        # stem_gap (default 15 cm) still separate stems at this resolution.
+        cell = min(0.02, fit.stem_gap / 4)
+        _, first, inverse = np.unique(
+            np.floor(band[:, :2] / cell).astype(np.int64),
+            axis=0,
+            return_index=True,
+            return_inverse=True,
+        )
+        cell_labels = DBSCAN(eps=fit.stem_gap, min_samples=2).fit_predict(band[first, :2])
+        labels = cell_labels[inverse.ravel()]
         comps = [
             c for c in np.unique(labels) if c >= 0 and np.sum(labels == c) >= fit.min_band_points
         ]
@@ -629,7 +640,7 @@ def split_multi_stem(
         comps.sort(key=lambda c: -np.sum(labels == c))
         centers = np.array([np.median(band[labels == c, :2], axis=0) for c in comps])
         # every point of the cluster goes to the nearest stem centre in XY
-        owner = np.argmin(np.linalg.norm(pts[:, None, :2] - centers[None, :, :], axis=2), axis=1)
+        owner = KDTree(centers).query(pts[:, :2], workers=-1)[1]  # nearest stem centre in XY
         for rank in range(len(comps)):
             new_id = tid if rank == 0 else next_id
             if rank:

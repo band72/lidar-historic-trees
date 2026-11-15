@@ -105,8 +105,12 @@ def test_stem_with_too_few_points_at_breast_height_is_included():
     pts = stem(rng, 0.4, rate=300, width=200, n=1200)
     pts = pts[(pts[:, 2] > 1.9) | (rng.random(len(pts)) < 0.02)]  # almost nothing near 1.3 m
     with pytest.raises(FitError, match="points in the breast-height band"):
-        fit_stem(pts, FitParams())
-    f = fit_stem(pts, FitParams(complete_partial_stems=True, max_band_half_width=0.75))
+        fit_stem(pts, FitParams(reject_non_stems=False))
+    # the trunk check is off: this synthetic stem is deliberately missing most of 1.0-1.9 m
+    f = fit_stem(
+        pts,
+        FitParams(complete_partial_stems=True, max_band_half_width=0.75, reject_non_stems=False),
+    )
     assert f.band_half_width > 0.25 and "too few usable points" in f.notes[0]
     assert f.dbh == pytest.approx(0.4, abs=0.04)
 
