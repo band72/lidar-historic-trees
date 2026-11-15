@@ -55,6 +55,8 @@ class TreeRecord:
     n_points: int
     dbh: float = float("nan")
     dbh_se: float = float("nan")
+    #: extra DBH uncertainty (m, 1 sd) for the part of the stem that was not seen; already in dbh_se
+    view_sd: float = float("nan")
     ci_low: float = float("nan")
     ci_high: float = float("nan")
     confidence: float = float("nan")
@@ -120,6 +122,7 @@ LENGTH_FIELDS = (
     "bh_elevation",
     "dbh",
     "dbh_se",
+    "view_sd",
     "ci_low",
     "ci_high",
     "rmse",
@@ -139,6 +142,7 @@ CORE_COLUMNS = [
     "dbh_cm",
     "dbh_in",
     "dbh_se",
+    "view_sd",
     "ci_low",
     "ci_high",
     "confidence",

@@ -729,7 +729,7 @@ def fit_trees(
             logger.debug(f"tree {tid}: failed - {reason}")
         else:
             rec.status = STATUS_WARNING if sf.warnings else STATUS_OK
-            rec.dbh, rec.dbh_se = sf.dbh, sf.dbh_se
+            rec.dbh, rec.dbh_se, rec.view_sd = sf.dbh, sf.dbh_se, sf.view_sd
             rec.ci_low, rec.ci_high = sf.ci_low, sf.ci_high
             rec.confidence, rec.ci_method = sf.confidence, sf.ci_method
             rec.n_band_points, rec.inlier_ratio, rec.rmse = (

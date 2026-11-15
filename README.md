@@ -255,7 +255,7 @@ These sliders update every result instantly.
 | CI method | analytic | *analytic* is instant; *bootstrap* is slower and makes fewer assumptions ([details](#8-how-the-measurement-works)) |
 | Systematic uncertainty | 0.5 cm | Error the scan itself can't reveal. **Calibrate it** with field data ([section 9](#9-calibrating-the-confidence-interval)) |
 | Fitting details | | Inlier tolerance, robust kernel scale, max DBH, max stem tilt, RANSAC iterations, bootstrap resamples |
-| Quality flags | | Thresholds that turn a tree's status into *warning* |
+| Quality flags | | Thresholds that turn a tree's status into *warning* (arc coverage default 60 %), and the assumed *stem non-roundness* that widens the interval of partly seen stems |
 | Merged trees | on, 15 cm | Splits clusters that contain several stems, which recovers trees the segmentation merged |
 
 ### The main area
@@ -438,7 +438,8 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `breast_height` | Height used (e.g. 1.3) |
 | `bh_elevation` | **Absolute elevation of the DBH plane** = `ground_z + breast_height` |
 | `dbh`, `dbh_cm`, `dbh_in` | DBH in the length unit, in cm, and in inches |
-| `dbh_se` | Standard error of the DBH |
+| `dbh_se` | Standard error of the DBH (includes the unseen-part allowance below) |
+| `view_sd` | The part of that error that comes from the stem's unseen side (0 for a stem seen all round) |
 | `ci_low`, `ci_high` | Confidence interval bounds |
 | `confidence`, `ci_method` | Interval level and method |
 | `n_points`, `n_band_points` | Points in the tree, and in the breast-height band |
@@ -522,6 +523,8 @@ fit:
   ci_method: analytic       # or bootstrap
   model_sd: 0.005           # systematic uncertainty (m); calibrate it
   split_stems: true         # recover trees merged by segmentation
+  min_arc_coverage: 0.6     # stems scanned from fewer sides than this are flagged
+  ovality_sd: 0.03          # assumed stem non-roundness; widens intervals of partly seen stems
 ```
 
 Invalid values are rejected with a message naming the setting and its valid range.
@@ -538,28 +541,39 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - **analytic**: a *cluster-robust* covariance of the fit, using angular sectors of the stem as clusters, with a Student-t interval. Neighbouring LiDAR points aren't independent (bark texture, non-round stems, scan lines). Treating them as independent would make the interval far too narrow, and sector clustering accounts for that. It's instant.
    - **bootstrap**: refits the stem many times on resampled angular sectors and takes the percentile interval. Slower, with fewer assumptions.
    - Both methods add the **systematic uncertainty** `model_sd` in quadrature. This covers error the scan can't reveal: non-circular stems, taper, segmentation mistakes.
-6. **Quality flags.** A tree becomes a *warning* when its arc coverage is low (seen from one side), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
+   - Stems seen from one side also get the **unseen-part allowance** `view_sd` ([details](#stems-that-are-only-partly-visible)).
+6. **Quality flags.** A tree becomes a *warning* when its arc coverage is below 60 % (seen from one side, with a wider interval), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
 
 On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, no false detections, DBH RMSE about 0.25 cm, and the 95 % interval contained the true DBH for every tree. **Real scans have larger errors, so calibrate before relying on the intervals.**
 
 ---
 
-### Limits: stems that are only partly visible
+### Stems that are only partly visible
 
-When the scan sees only one side of a trunk, the program still measures it and says how much of the circumference it saw (`arc_coverage` in the table). What to expect, from simulations on synthetic stems with known diameter:
+When the scan sees only one side of a trunk, the program still measures it, says how much of the circumference it saw (`arc_coverage`), **flags it as a `warning`**, and **widens its interval**.
 
-| Stem seen | Round stem | Oval stem (44 × 36 cm) |
+**What happens to the measurement.** The program fits a circle to the arc it can see. For a round stem that works well even from half the circumference. A stem that is not round cannot be recognised from one side, and the fit then reflects the *local curvature*: too small if the scanner sees the flat side of an oval, too large if it sees its narrow end. Simulations on synthetic stems with known diameter:
+
+| Stem seen | Round stem, DBH error | Oval stem (44 × 36 cm), DBH error |
 |---|---|---|
-| All the way round | error about 0.03 cm | +0.1 cm |
-| About three quarters (270°) | error about 0.03 cm | about 5 % low |
-| About half (180°) | error about 0.1-0.2 cm | **13 % low or 17 % high**, depending on which side faces the scanner |
-| Under 40 % (120° or less) | error 0.1-0.7 cm, interval widens, flagged `warning` | not simulated |
+| All the way round | 0.03 cm | +0.1 cm |
+| About three quarters (270°) | 0.03 cm | about 5 % low |
+| About half (180°) | 0.1-0.2 cm | **13 % low or 17 % high**, depending on which side faces the scanner |
+| Under 40 % (120° or less) | 0.1-0.7 cm | not simulated |
 
-- **For round stems a half view is fine**, and the interval stays honest.
-- **For stems that are not round, a half view cannot show it.** The program fits a circle to the arc it sees, so it measures the *local curvature*: too small if you see the flat side of an oval, too large if you see its narrow end. The reported interval only covers measurement noise and the systematic term, not this shape error, so in the oval simulation it excluded the true value.
-- A half-visible stem is **not flagged** until its arc coverage drops below 40 % (`fit.min_arc_coverage`). Raise that to about 0.6 (`min_arc_coverage: 0.6` in the config) if you'd rather see every half-visible stem marked `warning`.
+**What the program does about it.**
 
-What to do: scan from at least two sides, so every stem is seen all round or from both flanks. In the table, sort or filter by `arc_coverage` and treat low values as approximate. If you must use a one-sided scan, tape-measure some of the partly visible trees and [calibrate](#9-calibrating-the-confidence-interval) with them, since that sets the systematic uncertainty for exactly this situation.
+- **Flag:** any stem whose scanned arc covers less than 60 % of the circumference (`fit.min_arc_coverage`, default 0.6, so half-visible stems are flagged) gets status `warning`, with a message such as *"low arc coverage (53 %): stem seen from one side; DBH assumes a round stem, interval widened by ±3.1 cm for possible non-roundness"*.
+- **Widen:** the interval includes an allowance for the part of the stem that was not seen: `view_sd = ovality_sd × DBH × 3 × (1 − arc_coverage)`, which is zero for a stem seen all round. `fit.ovality_sd` (default 0.03, i.e. 3 %) is the assumed non-roundness of your stems, (long − short) / (long + short). The allowance is added to the measurement uncertainty, and the CSV has it as the `view_sd` column. The measured DBH itself never changes.
+- **Check:** with stems that really are 3 % oval and random orientation, the 95 % interval contains the true diameter in 100 % of simulated cases at 270°, 180° and 120°. Before this allowance existed it contained it only 57 % of the time at 180° and 38 % at 120°. At 6 % ovality (twice the assumption) the coverage is 100 % at 270°, 95 % at 180° and 78 % at 120°.
+
+**What the program cannot do.** The 3 % is an assumption, not a measurement of your forest. Stems that are strongly oval, fluted or buttressed (like the 44 × 36 cm example above) will still be mis-measured from one side by more than the interval says. For such species raise `fit.ovality_sd` (the app has a *Stem non-roundness* slider), or better, scan from more sides.
+
+What to do:
+
+- **Scan from at least two sides**, so every stem is seen all round or from both flanks. Then none of this matters.
+- **Review the flagged trees.** In the table, filter by status `warning` or sort by `arc_coverage`.
+- **Calibrate with partly visible trees.** Tape-measure some of them and run [calibration](#9-calibrating-the-confidence-interval); it checks how well the intervals work on your data. If the calibration shows the intervals are too narrow, raise `ovality_sd`.
 
 ## 9. Calibrating the confidence interval
 
@@ -600,8 +614,8 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Neighbouring trees merged into one** | Keep *Merged trees* on and lower the stem gap; lower `k` or `beta` |
 | **One tree split into several** | Raise `k` or `beta` |
 | **Many `failed` trees: "only N points in the breast-height band"** | Sparse stems: widen the band (`band_half_width`) or lower `min_band_points` |
-| **Many `warning: low arc coverage`** | The stems were scanned from one side. Round stems are still measured well, but oval ones can be off by more than the interval says: see [Limits](#limits-stems-that-are-only-partly-visible). Scan from more positions |
-| **Half the trunk is missing in the scan** | Works for round stems; see [Limits](#limits-stems-that-are-only-partly-visible) for what to expect and how to mark such trees |
+| **Many `warning: low arc coverage`** | The stems were scanned from one side (less than 60 % of the circumference). Their intervals are already widened for this, but strongly oval stems can still be off by more: see [Stems that are only partly visible](#stems-that-are-only-partly-visible). Scan from more positions |
+| **Half the trunk is missing in the scan** | It is measured, flagged `warning` and given a wider interval; see [Stems that are only partly visible](#stems-that-are-only-partly-visible) |
 | **Results are off by about 3.3×** | The cloud is in feet: use `--units ft` (or `us_ft`), or set *Point cloud units* in the app |
 | **DBH consistently too small or too large** | Check the ground (`refine_tolerance`), check `breast_height`, and run [calibration](#9-calibrating-the-confidence-interval) |
 | **ROS bag: "scans are in sensor frame(s)"** | See the [ROS bag table](#ros-bags-ros1-bag-ros2-folder-db3-mcap): use a registered topic, or `target_frame` |
@@ -621,7 +635,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 107 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
+pytest -q tests                  # 117 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
 ruff check python tests
 python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
 ```

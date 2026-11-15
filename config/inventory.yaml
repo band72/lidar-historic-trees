@@ -34,7 +34,8 @@ fit:
   max_radius: 0.75
   max_tilt_deg: 22.5
   ransac_iterations: 2000
-  min_arc_coverage: 0.4   # quality flags
+  min_arc_coverage: 0.6   # quality flags: stems scanned from fewer sides than this get a warning
+  ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems
   max_relative_ci_width: 0.25
   min_inlier_ratio: 0.3
   split_stems: true       # split clusters holding several stems at breast height (merged trees)

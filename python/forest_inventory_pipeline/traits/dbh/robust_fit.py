@@ -36,6 +36,13 @@ Pipeline per tree (points are height-normalized, z = height above ground):
      ``point`` resamples individual points (iid assumption; usually too narrow).
    Both add ``model_sd`` (systematic error, 1 sd) in quadrature. See ``calibration.py``.
 
+   Stems seen from one side: a circle fitted to a partial arc measures the *local curvature*,
+   so a stem that is not round is mis-measured, and one side cannot show whether it is round.
+   The interval therefore also includes ``view_sd = ovality_sd * DBH * 3 * (1 - arc_coverage)``
+   (zero for a stem seen all round). The factor 3 was fitted to simulated oval stems at
+   180-270 degrees (worst case over orientations); ``ovality_sd`` is the assumed 1-sd
+   non-roundness, ``(long - short) / (long + short)`` of the cross-section.
+
 Cylinder parameterization: theta = [x0, y0, a, b, r]. The axis passes through
 (x0, y0, z_ref) with direction (a, b, 1)/||(a, b, 1)||, r is the radius. Unlike a free
 center + rotation parameterization there is no gauge freedom, so the normal matrix is
@@ -53,6 +60,8 @@ from scipy import stats
 from ...errors import FitError, ParameterError
 
 N_PARAMS = 5
+#: view_sd = ovality_sd * DBH * VIEW_FACTOR * (1 - arc_coverage); fitted to simulated oval stems
+VIEW_FACTOR = 3.0
 _ANGLE_BINS = 36
 
 
@@ -78,7 +87,11 @@ class FitParams:
     n_bootstrap: int = 200
     bootstrap_block: Literal["sector", "point"] = "sector"
     n_sectors: int = 12
-    min_arc_coverage: float = 0.4
+    #: stems whose scanned arc covers less than this fraction are flagged "warning"
+    min_arc_coverage: float = 0.6
+    #: assumed 1-sd non-roundness of stems, (long - short) / (long + short); widens the interval
+    #: of partly seen stems. An assumption: raise it for fluted or buttressed species.
+    ovality_sd: float = 0.03
     max_relative_ci_width: float = 0.25
     min_inlier_ratio: float = 0.3
     #: split clusters that contain several stems at breast height (under-segmentation)
@@ -136,6 +149,9 @@ class FitParams:
         )
         require(0 <= self.model_sd <= 0.2, f"model_sd must be in [0, 0.2] m, got {self.model_sd}")
         require(
+            0 <= self.ovality_sd <= 0.3, f"ovality_sd must be in [0, 0.3], got {self.ovality_sd}"
+        )
+        require(
             0.5 <= self.confidence < 1.0, f"confidence must be in [0.5, 1), got {self.confidence}"
         )
         require(
@@ -181,6 +197,8 @@ class StemFit:
     radius: float
     dbh: float
     dbh_se: float
+    #: extra DBH uncertainty (m, 1 sd) for the part of the circumference that was not seen
+    view_sd: float
     ci_low: float
     ci_high: float
     ci_method: str
@@ -496,6 +514,10 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
 
     dbh = 2.0 * r
     alpha = 1.0 - params.confidence
+    zq = float(stats.norm.ppf(1 - alpha / 2))
+    # a stem seen from one side cannot show whether it is round (see module docstring)
+    view_sd = params.ovality_sd * dbh * VIEW_FACTOR * (1.0 - min(max(coverage, 0.0), 1.0))
+    sys_sd = float(np.hypot(params.model_sd, view_sd))
     if params.ci_method == "analytic":
         groups = sector_ids(theta, band, params.breast_height, params.n_sectors)
         n_groups = len(np.unique(groups))
@@ -511,9 +533,8 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
             raise FitError("covariance is not finite; geometry is degenerate")
         se_stat = 2.0 * float(np.sqrt(var_r))
         tq = float(stats.t.ppf(1 - alpha / 2, df=n_groups - 1))
-        zq = float(stats.norm.ppf(1 - alpha / 2))
-        half = float(np.hypot(tq * se_stat, zq * params.model_sd))
-        se = float(np.hypot(se_stat, params.model_sd))
+        half = float(np.hypot(tq * se_stat, zq * sys_sd))
+        se = float(np.hypot(se_stat, sys_sd))
         lo, hi = dbh - half, dbh + half
     else:
         samples = bootstrap_dbh(band, theta, params, rng)
@@ -524,15 +545,17 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
         lo, hi = (float(q) for q in np.quantile(samples, [alpha / 2, 1 - alpha / 2]))
         # percentile interval must contain the point estimate
         lo, hi = min(lo, dbh), max(hi, dbh)
-        zq = float(stats.norm.ppf(1 - alpha / 2))
-        sys_half = zq * params.model_sd
+        sys_half = zq * sys_sd
         lo = dbh - float(np.hypot(dbh - lo, sys_half))
         hi = dbh + float(np.hypot(hi - dbh, sys_half))
-        se = float(np.hypot(np.std(samples, ddof=1), params.model_sd))
+        se = float(np.hypot(np.std(samples, ddof=1), sys_sd))
 
     warnings = []
     if coverage < params.min_arc_coverage:
-        warnings.append(f"low arc coverage ({coverage:.0%}): stem seen from one side")
+        warnings.append(
+            f"low arc coverage ({coverage:.0%}): stem seen from one side; DBH assumes a round stem, "
+            f"interval widened by +/-{zq * view_sd * 100:.1f} cm for possible non-roundness"
+        )
     if (hi - lo) / dbh > params.max_relative_ci_width:
         warnings.append(f"wide CI ({(hi - lo) / dbh:.0%} of DBH)")
     if inlier_ratio < params.min_inlier_ratio:
@@ -547,6 +570,7 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
         radius=float(r),
         dbh=float(dbh),
         dbh_se=float(se),
+        view_sd=float(view_sd),
         ci_low=float(max(lo, 0.0)),
         ci_high=float(hi),
         ci_method=params.ci_method

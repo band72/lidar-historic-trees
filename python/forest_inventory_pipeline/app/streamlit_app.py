@@ -486,7 +486,26 @@ def sidebar_fit() -> FitParams | None:
         iters = st.slider("RANSAC iterations", 100, 20000, 2000, 100)
         nboot = st.slider("Bootstrap resamples", 50, 2000, 200, 50, disabled=method != "bootstrap")
     with s.expander("Quality flags"):
-        cov = st.slider("Min arc coverage", 0.0, 1.0, 0.4, 0.05)
+        cov = st.slider(
+            "Min arc coverage",
+            0.0,
+            1.0,
+            0.6,
+            0.05,
+            help="Stems scanned from fewer sides than this are flagged as warnings "
+            "(half of the circumference = 0.5).",
+        )
+        ovality = st.slider(
+            "Stem non-roundness (%, 1 sd)",
+            0.0,
+            15.0,
+            3.0,
+            0.5,
+            help="Assumed (long - short) / (long + short) of stem cross-sections. A stem seen "
+            "from one side cannot show whether it is round, so its interval is widened by this "
+            "amount, more the less of the circumference was scanned. Raise it for fluted or "
+            "buttressed species.",
+        )
         relw = st.slider("Max CI width (% of DBH)", 1, 100, 25, 1)
         inl = st.slider("Min inlier ratio", 0.0, 1.0, 0.3, 0.05)
     with s.expander("Merged trees"):
@@ -519,6 +538,7 @@ def sidebar_fit() -> FitParams | None:
             ransac_iterations=iters,
             n_bootstrap=nboot,
             min_arc_coverage=cov,
+            ovality_sd=ovality / 100,
             max_relative_ci_width=relw / 100,
             min_inlier_ratio=inl,
             split_stems=split,
@@ -905,7 +925,9 @@ def export_panel(records, fp: FitParams, seg: dict, source: str):
             st.download_button(
                 f"Download {exp.extension}",
                 _deferred_export(exp, records, ctx, opts),  # built only when clicked
-                file_name=f"trees.{opts['format']}" if "format" in opts else f"trees{exp.extension}",
+                file_name=f"trees.{opts['format']}"
+                if "format" in opts
+                else f"trees{exp.extension}",
                 mime=exp.mime,
                 key=f"dl_{name}",
                 type="primary",
