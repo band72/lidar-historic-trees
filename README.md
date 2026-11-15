@@ -26,7 +26,7 @@ It builds on the ICRA 2024 research code [PRBonn/forest_inventory_pipeline](http
 ## Contents
 
 1. [Install](#1-install): Windows, Linux, from source, Docker
-2. [Quick start](#2-quick-start)
+2. [Quick start, preferred input and recommended workflow](#2-quick-start)
 3. [Using the web app](#3-using-the-web-app)
 4. [Using the command line](#4-using-the-command-line)
 5. [Input data](#5-input-data): point clouds and ROS bags
@@ -130,14 +130,85 @@ fip demo-data demo/plot.ply              # writes demo/plot.ply and demo/plot_tr
 fip inventory demo/plot.ply -o results   # writes results/trees.csv, results/trees.dxf, results/fip.log
 ```
 
-**Your own data:**
+**Your own data:** follow the [recommended workflow](#recommended-workflow) below. In short:
 
 ```bash
-fip inventory /data/plot.laz -o results
-fip inventory /data/run.bag -o results -R topic=/cloud_registered      # ROS bag, see section 5
+fip inventory /data/plot.laz -o results       # preferred input: a LAS/LAZ file
 ```
 
 Open `results/trees.csv` in a spreadsheet, or `results/trees.dxf` in a CAD program (AutoCAD, BricsCAD, LibreCAD, QGIS).
+
+### Preferred input file
+
+**A LAZ (or LAS) file in a projected coordinate system, in metres or feet.** It is the best choice because the file itself tells the program what it needs to know:
+
+| | LAS / LAZ (preferred) | PLY / PCD | TXT / CSV / NPY | ROS bag |
+|---|---|---|---|---|
+| Units and coordinate system | read from the header | you must pass `--units` (and `--crs` to record a CRS) | same as PLY/PCD | metres (the ROS convention) |
+| Ground points | reused if classified (ASPRS class 2), saving a step | not available | not available | not available |
+| Noise points | removed (classes 7 and 18) | not available | not available | not available |
+| Cut out one plot from a big file | `--crop`, applied while reading | after loading | after loading | after loading |
+| Outputs placed correctly in GIS/CAD | yes: `.prj`, GeoJSON and the segmented LAZ carry the CRS | only with `--crs` | only with `--crs` | only with `--crs` |
+
+What makes a good input:
+
+- **Projected coordinates**, such as UTM or State Plane, in metres or feet. Longitude/latitude files are refused, so reproject them first.
+- **Stems visible from the ground up to at least 1.5 m**, since the measurement uses a band around breast height (1.3 m by default). Don't clip the cloud to a height range: the program needs the ground and the lower trunk, and does its own height slicing.
+- **Scanned from several positions** (walk a loop, or use several set-ups) so each stem is seen from more than one side. Stems seen from one side only get a warning and a wider interval.
+- **Dense enough on the stems.** In the demo plots each tree has several hundred to a few thousand points in the 50 cm band. A tree with fewer than 30 band points fails, and the log tells you.
+- **Ground classified, if you can.** Optional. When the file has ground points (class 2), they are used directly, so you control what counts as ground and the ground-finding step is skipped. Without them the program runs its own ground filter.
+- **One plot per file, or a folder of tiles** with the same units and coordinate system. Everything is one plot, so crop a large file to the plot first.
+
+If your scanner software produces something else (E57, RCP, PTS), export it to LAZ first. For a robot or backpack scan in a ROS bag, run SLAM first and use the *registered* cloud topic, or export it to LAZ ([details](#ros-bags-ros1-bag-ros2-folder-db3-mcap)).
+
+### Recommended workflow
+
+The first four steps are quick to repeat, so iterate there before spending time on calibration.
+
+**1. Prepare the data.** Export your scan as LAZ in a projected CRS. If your software can classify ground, do so. Note the plot boundaries in the file's coordinates if the file is bigger than the plot.
+
+**2. Check the installation** (once): `fip self-test`.
+
+**3. First run on a small area.** Work on a 30–50 m box first, so each run takes seconds (the box is `xmin,ymin,xmax,ymax` in the file's own coordinates and units):
+
+```bash
+fip inventory plot.laz -o run1 --crop 656100,1312300,656164,1312364 \
+    -e csv -e dxf -e geojson -e points
+```
+
+or in the web app: choose the file, enter the same box in *Crop*, press **Run segmentation**.
+
+**4. Check that the trees were found correctly.** Open `run1/trees.laz` in CloudCompare or QGIS and colour by `tree_id`: each tree should be one colour. In the app, look at the **Map** tab. Then adjust and re-run:
+
+| What you see | Change |
+|---|---|
+| Two trees share one colour | lower `segment.k` or `segment.beta` (the app's *Merged trees* option also splits these) |
+| One tree has several colours | raise `segment.k` or `segment.beta` |
+| Bushes or branches become "trees" | raise *Min points per tree*, or raise `segment.min_z` |
+| Trees missing entirely | check the height slice contains breast height; lower `min_z` |
+| Trees' ground height looks wrong | `--ground-source csf`, or adjust the cloth resolution |
+
+**5. Check the measurements.** In the app's **Table & export** tab, filter to *warning* and *failed* and read the `message`. Open **Tree detail** for a few trees, including a large one and a leaning one, and check that the fitted circle follows the points. Use the live sliders to set the *breast height* your organisation uses (1.3 m, or 4.5 ft in the US), the *confidence level* and the *band*. Trees flagged for low arc coverage were seen from one side only: treat their intervals as the honest ones, and don't tighten them.
+
+**6. Calibrate the interval** with tape-measured trees ([section 9](#9-calibrating-the-confidence-interval)). Measure 15–30 trees in the plot, record their positions in the same coordinate system, and run:
+
+```bash
+fip calibrate run1/trees.csv field.csv        # suggests a model_sd
+```
+
+Put the suggested `model_sd` in your config. This is the step that makes the intervals trustworthy on *your* scanner and forest. Repeat it if you change scanner, season or forest type.
+
+**7. Final run, on the whole plot, with saved settings.** Copy [`config/inventory.yaml`](config/inventory.yaml), keep only the values you changed, and run:
+
+```bash
+fip inventory plot.laz -o final -c my_settings.yaml -e csv -e dxf -e geojson -e points
+```
+
+For several plots use the same settings file for all of them, so results are comparable.
+
+**8. Deliver and keep the record.** Use `trees.csv` (tables, spreadsheets), `trees.dxf` (CAD drawings with each DBH circle at its true elevation), and `trees.geojson` (GIS). Keep the whole output folder: `run.json` records the inputs, settings, software version and a checksum of every file, and `fip.log` shows how each tree was handled.
+
+The same steps work in the web app: choose the file, set *Crop*, press **Run segmentation**, adjust the live sliders, then download the files from the **Table & export** tab. The **Calibration** tab applies the suggested `model_sd` with one click.
 
 ---
 
@@ -283,6 +354,8 @@ See [section 9](#9-calibrating-the-confidence-interval).
 ## 5. Input data
 
 ### Point cloud files
+
+LAS/LAZ is preferred, and the table in [section 2](#preferred-input-file) says why.
 
 | Format | Extensions | Notes |
 |---|---|---|
