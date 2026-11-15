@@ -569,6 +569,22 @@ The pipeline has been run on a real 2-minute segment (files and images: [docs/re
 - Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
 - No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
 
+**`trees.dxf` from this segment in a CAD program** (2D wireframe; the first run, before the trunk check). Each fitted cluster is drawn as a DBH circle (layer `FIP_DBH` green for ok, `FIP_DBH_WARN` yellow for warning) with its CI rings (`FIP_CI`, cyan, dashed; solid when zoomed out) and a label giving the tree number, DBH and interval. All 227 fitted clusters are drawn, so many of these circles are shrubs, posts and walls; the trunk check now removes them.
+
+<img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_before_trunk_check.png" width="700" alt="DXF export opened in a CAD program: DBH circles with CI rings and labels"/>
+
+**Breast-height slice from above, before and after the trunk check.** Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white. Coordinates are local (from the stitching, not north-up); the route runs top to bottom and the forest edge is on the right.
+
+| Before: 227 clusters measured | After: 14 accepted |
+|---|---|
+| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the trunk check"/> |
+
+**Close-ups at 1.2-1.4 m** (blue points, white fitted circle, orange CI). Before: filled foliage blobs and near-empty circles fitted to scatter. After: crisp rings of real trunks, plus the posts holding a roof that the check cannot tell from small trunks.
+
+| Before | After |
+|---|---|
+| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_stems.png" width="380" alt="Stem close-ups before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_stems.png" width="380" alt="Stem close-ups after the trunk check"/> |
+
 ### Stems that are only partly visible
 
 When the scan sees only one side of a trunk, the program still measures it, says how much of the circumference it saw (`arc_coverage`), **flags it as a `warning`**, and **widens its interval**.
