@@ -148,3 +148,63 @@ def test_a_broken_input_still_fails(tmp_path):
                                            np.zeros(5000)])
     with pytest.raises(FIPError):
         tiling.run_tiled([tmp_path / "flat.las"], 20.0, 6.0, GP, SP, FP)
+
+
+# --- fip inventory --tile ----------------------------------------------------------------------
+
+import csv  # noqa: E402
+import json  # noqa: E402
+import os  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+from forest_inventory_pipeline import exclusions as excl  # noqa: E402
+
+
+def fip(*args):
+    return subprocess.run(
+        [sys.executable, "-m", "forest_inventory_pipeline.fip", *args],
+        capture_output=True, text=True,
+        env={**os.environ, "COLUMNS": "200", "LOG_LEVEL": "info"},
+    )
+
+
+def test_cli_tiled_run(tmp_path):
+    path, _ = _plot(tmp_path)
+    res = fip("inventory", str(path), "-o", str(tmp_path / "out"), "-e", "csv",
+              "--tile", "20", "--tile-overlap", "6")
+    assert res.returncode == 0, res.stdout + res.stderr
+    rows = list(csv.DictReader((tmp_path / "out" / "trees.csv").open()))
+    assert {"tile", "tile_tree_id"} <= set(rows[0])
+    tiles = json.loads((tmp_path / "out" / "run.json").read_text())["parameters"]["tiles"]
+    ext, _ = tiling.cloud_extent([path])
+    assert len(tiles) == len(tiling.plan_tiles(ext, 20.0, 6.0))
+    assert all({"name", "core", "points", "trees", "seconds", "skipped"} <= set(t) for t in tiles)
+
+
+def test_cli_untiled_has_no_tile_columns(tmp_path):
+    path, _ = _plot(tmp_path)
+    assert fip("inventory", str(path), "-o", str(tmp_path / "u"), "-e", "csv").returncode == 0
+    assert "tile" not in next(csv.DictReader((tmp_path / "u" / "trees.csv").open()))
+
+
+def test_cli_rejects_bad_tile_sizes(tmp_path):
+    path, _ = _plot(tmp_path)
+    res = fip("inventory", str(path), "-o", str(tmp_path / "b"), "--tile", "10")
+    assert res.returncode == 2 and "20 m" in res.stdout + res.stderr
+    res = fip("inventory", str(path), "-o", str(tmp_path / "c"), "--tile", "20", "--crop", "0,0,10,10")
+    assert res.returncode == 2 and "--crop" in res.stdout + res.stderr
+
+
+def test_cli_tiled_reapplies_a_review(tmp_path):
+    path, _ = _plot(tmp_path)
+    assert fip("inventory", str(path), "-o", str(tmp_path / "u"), "-e", "csv").returncode == 0
+    t = next(r for r in csv.DictReader((tmp_path / "u" / "trees.csv").open()) if r["status"] == "ok")
+    excl.save(tmp_path / "review.json",
+              [excl.Exclusion(x=float(t["x"]) + 0.05, y=float(t["y"]), reason="shrub")])
+    res = fip("inventory", str(path), "-o", str(tmp_path / "t"), "-e", "csv",
+              "--tile", "20", "--tile-overlap", "6", "--exclusions", str(tmp_path / "review.json"))
+    assert res.returncode == 0, res.stdout + res.stderr
+    rows = list(csv.DictReader((tmp_path / "t" / "trees.csv").open()))
+    hit = [r for r in rows if np.hypot(float(r["x"]) - float(t["x"]), float(r["y"]) - float(t["y"])) < 0.1]
+    assert [r["status"] for r in hit] == ["excluded"] and hit[0]["exclusion_reason"] == "shrub"

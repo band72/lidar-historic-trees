@@ -360,6 +360,8 @@ def inventory(
     crop: Annotated[Optional[str], typer.Option("--crop", help="Only process points inside xmin,ymin,xmax,ymax (input coordinates). LAS is cropped while reading.")] = None,
     ground_source: Annotated[Optional[str], typer.Option("--ground-source", help="auto (use the file's ground classification if present), csf or classification.")] = None,
     crs: Annotated[Optional[str], typer.Option("--crs", help="Coordinate system to record in the outputs, e.g. EPSG:25832 (overrides the file header).")] = None,
+    tile: Annotated[Optional[float], typer.Option("--tile", help="Process a large cloud as square tiles of this size (m, at least 20), each with an overlap buffer, and write one result. LAS/LAZ are cropped while reading, so memory is that of one tile.")] = None,
+    tile_overlap: Annotated[float, typer.Option("--tile-overlap", help="Buffer around each tile (m, at least 5, less than half the tile): a tree is kept by the tile containing its stem, measured with this much context.")] = 10.0,
     keep_noise: Annotated[bool, typer.Option("--keep-noise", help="Keep points classified as noise (ASPRS 7/18).")] = False,
     breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height, in the input unit (default 1.3 m; 4.5 ft for feet).")] = None,
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
@@ -432,7 +434,24 @@ def inventory(
             k, v = item.split("=", 1)
             reader_opts[k] = v
 
-        cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, crop=crop, keep_noise=keep_noise, **reader_opts)
+        tiles_info = None
+        if tile is not None:
+            from . import tiling
+
+            if crop:
+                raise typer.BadParameter("use --crop or --tile, not both")
+            tiling.plan_tiles((0.0, 0.0, 1.0, 1.0), tile, tile_overlap)  # check the sizes first
+            meta = None if reader else tiling.input_metadata(inputs)
+            probe = None if reader else tiling.cloud_extent(inputs, req_unit)
+            if meta is not None and probe is not None:
+                cloud = inv.LoadedCloud(
+                    xyz=None, classification=None, units=probe[1], crs=meta["crs"],  # type: ignore[arg-type]
+                    crs_wkt=meta["crs_wkt"], sources=meta["sources"],
+                )
+            else:  # cannot be cropped while reading: load once, run_tiled reuses it
+                cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, keep_noise=keep_noise, **reader_opts)
+        else:
+            cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, crop=crop, keep_noise=keep_noise, **reader_opts)
         in_unit = cloud.units
         out_unit = out_unit_opt or in_unit
         if breast_height is not None:
@@ -446,9 +465,23 @@ def inventory(
         for issue in inv.check_band_inside_slice(fp, sp):
             logger.warning(issue)
 
-        records = inv.process_cloud(
-            cloud.xyz, cloud.classification, gp, sp, fp, keep_points="points" in export
-        )
+        if tile is not None:
+            records, tiles_info = tiling.run_tiled(
+                inputs, tile, tile_overlap, gp, sp, fp, reader=reader, units=req_unit,
+                keep_points="points" in export, keep_noise=keep_noise, reader_options=reader_opts,
+                cloud=cloud if cloud.xyz is not None else None,
+            )
+            used = [t for t in tiles_info if not t["skipped"]]
+            if used:
+                peak = max(used, key=lambda t: t["points"])
+                logger.info(
+                    f"{len(used)} of {len(tiles_info)} tiles processed; largest {peak['name']} "
+                    f"with {peak['points']:,} points"
+                )
+        else:
+            records = inv.process_cloud(
+                cloud.xyz, cloud.classification, gp, sp, fp, keep_points="points" in export
+            )
         excluded: dict[int, str] = {}
         added: dict[int, str] = {}
         if exclusions_fp:
@@ -464,6 +497,8 @@ def inventory(
             excluded_by_reviewer=sorted(excluded),
             added_by_reviewer=sorted(added),
             exclusions_file=str(exclusions_fp) if exclusions_fp else None,
+            **({"tiles": tiles_info, "tile_size_m": tile, "tile_overlap_m": tile_overlap}
+               if tiles_info is not None else {}),
         )
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
@@ -489,7 +524,7 @@ def exc_info_str(exc: BaseException) -> str:
     return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
 
-def _field_sheet_reference(path: Path, recs) -> "np.ndarray":
+def _field_sheet_reference(path: Path, recs):
     """Reference trees (x, y, dbh in m) from a filled field sheet, matched to recs by tree_id."""
     import csv as _csv
     import numpy as np

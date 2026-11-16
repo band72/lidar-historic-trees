@@ -329,11 +329,12 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
-| `--exclusions FILE` | Reapply a saved review (`exclusions.json`): exclusions and *This is a tree* additions, matched by position |
+| `--tile SIZE` | Process a large cloud as square tiles of `SIZE` m (at least 20), each with an overlap buffer, and write one result ([details](#large-clouds-tiles)) |
+| `--tile-overlap M` | Buffer around each tile, in m (default 10; at least 5, less than half the tile) |
 | `--profile NAME` | Start from a [site profile](#site-profile) (`Shrubs`, `"Isolated Trees"`, ...); `-c` files and other options override its values. Recorded in `run.json` |
 | `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
-| `--exclusions FILE` | Reapply a saved review: the `exclusions.json` of an earlier run (or its folder). Trees are matched by stem position, so this works after changing settings |
+| `--exclusions FILE` | Reapply a saved review: the `exclusions.json` of an earlier run (or its folder), with its exclusions and *This is a tree* additions. Trees are matched by stem position, so this works after changing settings or with `--tile` |
 | `--log-level trace\|debug\|info\|warn` | Console verbosity (the log file always has full detail) |
 
 Examples:
@@ -356,6 +357,22 @@ fip inventory plot.laz -o out -c config/inventory.yaml
 ```
 
 Exit codes: `0` success, `2` invalid input or settings (with a clear message), `1` unexpected error (full traceback in `fip.log`).
+
+### Large clouds: tiles
+
+A cloud too large for memory (a big terrestrial or airborne LAS, a long drive stitched as one cloud) can be processed tile by tile:
+
+```bash
+fip inventory big.laz -o out --tile 100            # 100 m tiles, 10 m overlap
+fip inventory big.laz -o out --tile 60 --tile-overlap 15
+```
+
+The cloud's extent is divided into square tiles of `SIZE` m. Each tile is processed (ground, heights, segmentation, fit) over the tile plus an overlap buffer on every side, and keeps only the trees whose stem centre lies in the tile itself, so every tree is measured with its surroundings and counted once. A stem fitted twice across a tile edge is removed as a duplicate. The result is the usual set of files: `trees.csv` gains the columns `tile` (e.g. `r2c3`) and `tile_tree_id`, and `run.json` lists every tile with its points, trees, run time and, for a skipped tile (no points, or only an edge of the cloud), the reason.
+
+- **Memory.** LAS/LAZ files are cropped while reading, so memory is that of one tile with its buffer. Other formats (PLY, NPY, text, ROS bags) cannot be cropped while reading: they are loaded once, then processed tile by tile, which still keeps the ground filtering and segmentation per tile.
+- **The overlap** must cover everything a tree's measurement looks at: its cluster in the 1-4 m slice, and 3 m around the stem for the roof and crown checks. 10 m does for most trees; raise it for very wide crowns. A tree whose cluster reaches farther than the overlap from its stem may be measured differently near a tile edge.
+- `--tile` cannot be combined with `--crop`.
+- **A drive** is still best processed in segments (one KISS-ICP run each, georeferenced separately) and merged with [`fip merge`](#fip-merge): separate segments limit odometry drift and GNSS alignment errors to each segment.
 
 ### `fip app`
 
@@ -695,6 +712,7 @@ Whole-drive results (`docs/real_data/2022-03-08_drive/`):
 - [ ] Check whether DBH is overestimated for trees seen from one side (some circles looked larger than their trunks in side views).
 - [ ] Improve the two weak segments (240-480 s, GNSS residuals 1.6 and 2.7 m): loop closure in the KISS-ICP stitching or RTK, instead of relying on the tie between segments.
 - [ ] Process a segment **inside** the forest, where stems are seen from several sides.
+- [ ] Check `--tile` on a whole-drive cloud stitched as one (memory, run time, and the trees near tile edges against an untiled run).
 
 ### Stems that are only partly visible
 

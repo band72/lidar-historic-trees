@@ -118,6 +118,24 @@ def cloud_extent(paths, units: str = "auto") -> tuple[Box, str] | None:
     return ext, unit  # type: ignore[return-value]
 
 
+def input_metadata(paths) -> dict | None:
+    """
+    CRS, CRS WKT and source names of LAS/LAZ input(s), from the first header (no points are
+    read); None for other formats. Units come from ``cloud_extent``.
+    """
+    from .crs import from_las_header
+    from .inventory import expand_inputs
+
+    files = expand_inputs(paths)
+    if not files or any(p.suffix.lower() not in (".las", ".laz") for p in files):
+        return None
+    import laspy
+
+    with laspy.open(str(files[0])) as fh:
+        info = from_las_header(fh.header)
+    return dict(crs=info.crs, crs_wkt=info.wkt, sources=[str(p) for p in files])
+
+
 def crop_box(tile: Tile, unit: str) -> str:
     """The tile's buffered box as ``xmin,ymin,xmax,ymax`` in ``unit``, for ``load_cloud(crop=)``."""
     from .units import from_metres
@@ -141,6 +159,7 @@ def run_tiled(
     keep_points: bool = False,
     keep_noise: bool = False,
     reader_options: dict | None = None,
+    cloud=None,
 ):
     """
     Run ``inventory.process_cloud`` on every buffered tile and assemble one result.
@@ -150,20 +169,21 @@ def run_tiled(
     owns; ``dedupe_stems`` then removes a stem fitted twice across a core edge. Tiles with no
     points or no tree clusters are skipped, with the reason in their summary.
 
+    :param cloud: an already loaded cloud (``inventory.LoadedCloud``) for formats that cannot
+        be cropped while reading, so the caller and this function do not both load it.
     :return: (records with global ids 1..N and ``extra["tile"]``, ``extra["tile_tree_id"]``;
         one summary dict per tile: name, core, points, trees, seconds, skipped)
     """
     import time
 
-    import numpy as np
 
     from . import inventory as inv
     from .errors import InputDataError, StageError
     from .utils import logger
 
     reader_options = reader_options or {}
-    probe = None if reader else cloud_extent(inputs, units)
-    whole = None
+    probe = None if (reader or cloud is not None) else cloud_extent(inputs, units)
+    whole = cloud
     if probe is not None:
         extent, unit = probe
     else:
@@ -171,9 +191,10 @@ def run_tiled(
             "this format cannot be cropped while reading: the whole cloud is loaded once, "
             "then processed tile by tile (ground filtering and segmentation still per tile)"
         )
-        whole = inv.load_cloud(
-            inputs, reader=reader, units=units, keep_noise=keep_noise, **reader_options
-        )
+        if whole is None:
+            whole = inv.load_cloud(
+                inputs, reader=reader, units=units, keep_noise=keep_noise, **reader_options
+            )
         lo, hi = whole.xyz[:, :2].min(axis=0), whole.xyz[:, :2].max(axis=0)
         extent = (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
     tiles = plan_tiles(extent, size, overlap)
