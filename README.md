@@ -372,6 +372,7 @@ The cloud's extent is divided into square tiles of `SIZE` m. Each tile is proces
 - **Memory.** LAS/LAZ files are cropped while reading, so memory is that of one tile with its buffer. Other formats (PLY, NPY, text, ROS bags) cannot be cropped while reading: they are loaded once, then processed tile by tile, which still keeps the ground filtering and segmentation per tile.
 - **The overlap** must cover everything a tree's measurement looks at: its cluster in the 1-4 m slice, and 3 m around the stem for the roof and crown checks. 10 m does for most trees; raise it for very wide crowns. A tree whose cluster reaches farther than the overlap from its stem may be measured differently near a tile edge.
 - `--tile` cannot be combined with `--crop`.
+- **Tiled results are close to, not identical with, an untiled run.** The ground filter fits its cloth to the extent it is given, so each tile's ground model differs from the whole cloud's by a few cm (up to about 10 cm), and the DBH of messy, one-sided stems responds to that. On segment 360-480 s of the test drive (45 M points, 60 m tiles): peak memory 6.9 GB → 3.9 GB, run time 2:41 → 4:19 (buffers are processed twice and the file is read once per tile); 88 of 107 trees identical, 103 trees in total; the differences were spread over the tiles, not at their edges (overlap is not the cause), and the largest (a ground 1.8 m off) was an error of the untiled run, which the tiled run did not make. Use the largest tiles memory allows.
 - **A drive** is still best processed in segments (one KISS-ICP run each, georeferenced separately) and merged with [`fip merge`](#fip-merge): separate segments limit odometry drift and GNSS alignment errors to each segment.
 
 ### `fip app`
@@ -712,7 +713,8 @@ Whole-drive results (`docs/real_data/2022-03-08_drive/`):
 - [ ] Check whether DBH is overestimated for trees seen from one side (some circles looked larger than their trunks in side views).
 - [ ] Improve the two weak segments (240-480 s, GNSS residuals 1.6 and 2.7 m): loop closure in the KISS-ICP stitching or RTK, instead of relying on the tie between segments.
 - [ ] Process a segment **inside** the forest, where stems are seen from several sides.
-- [ ] Check `--tile` on a whole-drive cloud stitched as one (memory, run time, and the trees near tile edges against an untiled run).
+- [ ] Check `--tile` on a whole-drive cloud stitched as one (memory, run time, and the trees against an untiled run).
+- [ ] Share one ground model across tiles (e.g. ground filtered once on a thinned copy of the whole cloud), so tiled results no longer depend on the tile size: today 88 of 107 trees were identical on a real segment, the rest moved with the ground model.
 
 ### Stems that are only partly visible
 
