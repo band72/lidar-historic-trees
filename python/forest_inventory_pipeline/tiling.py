@@ -184,8 +184,10 @@ def run_tiled(
     reader_options = reader_options or {}
     probe = None if (reader or cloud is not None) else cloud_extent(inputs, units)
     whole = cloud
+    file_boxes: list[tuple] = []
     if probe is not None:
         extent, unit = probe
+        file_boxes = _file_boxes(inputs, unit)
     else:
         logger.info(
             "this format cannot be cropped while reading: the whole cloud is loaded once, "
@@ -200,7 +202,7 @@ def run_tiled(
     tiles = plan_tiles(extent, size, overlap)
     logger.info(f"{len(tiles)} tiles of {size:g} m with {overlap:g} m overlap")
 
-    kept, summaries, errors = [], [], []
+    results, summaries = [], []
     for t in tiles:
         t0 = time.perf_counter()
         info = dict(name=t.name, core=[round(v, 3) for v in t.core], points=0, trees=0,
@@ -208,11 +210,16 @@ def run_tiled(
         summaries.append(info)
         try:
             if whole is None:
-                cloud = inv.load_cloud(
-                    inputs, reader=reader, units=units, crop=crop_box(t, unit),
+                # only the files that reach into this tile: a file with no points in the crop
+                # box makes the reader fail, which would drop the whole tile
+                files = [f for f, box in file_boxes if _overlaps(box, t.buffered)]
+                if not files:
+                    raise InputDataError("no points to process in this tile")
+                tile_cloud = inv.load_cloud(
+                    files, reader=reader, units=units, crop=crop_box(t, unit),
                     keep_noise=keep_noise, **reader_options,
                 )
-                xyz, cls = cloud.xyz, cloud.classification
+                xyz, cls = tile_cloud.xyz, tile_cloud.classification
             else:
                 x0, y0, x1, y1 = t.buffered
                 x, y = whole.xyz[:, 0], whole.xyz[:, 1]
@@ -224,35 +231,131 @@ def run_tiled(
             info["points"] = int(len(xyz))
             records = inv.process_cloud(xyz, cls, gp, sp, fp, keep_points=keep_points)
         except (InputDataError, StageError) as exc:
-            # a tile holding only an edge of the cloud (a strip of ground, a few points) is not
-            # usable on its own; a broken file fails every tile, which is raised below
+            if not _empty_tile(exc):
+                # out of memory, a read error, a units/CRS conflict: never a partial result
+                hint = (
+                    "; the tile is too large for memory: use a smaller --tile"
+                    if "MemoryError" in str(exc) else ""
+                )
+                raise type(exc)(*_error_args(exc, f"tile {t.name}: ", hint)) from exc
             info["skipped"] = str(exc)
-            errors.append(exc)
         info["seconds"] = round(time.perf_counter() - t0, 1)
         if info["skipped"]:
-            logger.info(f"tile {t.name}: skipped ({info['skipped']})")
+            logger.info(f"tile {t.name}: skipped, nothing to measure ({info['skipped']})")
             continue
-        own = [r for r in records if t.owns(r.x, r.y)]
-        for r in own:
-            r.extra["tile"] = t.name
-            r.extra["tile_tree_id"] = int(r.tree_id)
-        kept += own
+        results.append((t, records))
         logger.info(
-            f"tile {t.name}: {info['points']:,} points, {sum(r.fitted for r in own)} trees "
-            f"measured of {len(own)} clusters in its core, {info['seconds']:.0f} s"
+            f"tile {t.name}: {info['points']:,} points, {len(records)} clusters, "
+            f"{info['seconds']:.0f} s"
         )
-
-    if errors and len(errors) == len(tiles):
-        raise errors[0]  # nothing usable anywhere: the input, not the tiling, is the problem
-    # global ids before dedupe (it tracks records by id, and tile ids repeat), then again after
-    for i, r in enumerate(kept, start=1):
-        r.tree_id = i
-    kept = inv.dedupe_stems(kept)
-    for i, r in enumerate(kept, start=1):
-        r.tree_id = i
+    if not results:
+        raise InputDataError(
+            "no tile has anything to measure: " + "; ".join(
+                f"{i['name']}: {i['skipped']}" for i in summaries[:5]
+            )
+        )
+    kept = assemble(results)
     counts: dict[str, int] = {}
     for r in kept:
         counts[r.extra["tile"]] = counts.get(r.extra["tile"], 0) + 1
     for info in summaries:
         info["trees"] = counts.get(info["name"], 0)
     return kept, summaries
+
+
+#: messages of tiles that simply hold nothing to measure (an edge of the cloud, open ground)
+_EMPTY_TILE = (
+    "no points to process",
+    "contains no valid points",
+    "a forest plot needs far more",
+    "vertical extent is only",
+    "every point was classified as ground",
+    "ground points found",
+    "points between",
+    "points after voxel_size",
+    "no tree instances found",
+)
+
+
+def _empty_tile(exc: Exception) -> bool:
+    return "MemoryError" not in str(exc) and any(m in str(exc) for m in _EMPTY_TILE)
+
+
+def _error_args(exc: Exception, prefix: str, suffix: str) -> tuple:
+    from .errors import StageError
+
+    if isinstance(exc, StageError):
+        return (exc.stage, prefix + str(exc).split("] ", 1)[-1] + suffix)
+    return (prefix + str(exc) + suffix,)
+
+
+def _file_boxes(inputs, unit: str) -> list[tuple]:
+    """(file, XY box in metres) of every LAS/LAZ input, from the headers."""
+    import laspy
+
+    from .inventory import expand_inputs
+    from .units import to_metres
+
+    out = []
+    for p in expand_inputs(inputs):
+        with laspy.open(str(p)) as fh:
+            lo, hi = fh.header.mins, fh.header.maxs
+        out.append((p, tuple(float(to_metres(v, unit)) for v in (lo[0], lo[1], hi[0], hi[1]))))
+    return out
+
+
+def _overlaps(a: Box, b: Box) -> bool:
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
+#: a tile also keeps records this far outside its core (m): each tile places an edge stem a
+#: little differently (its own ground model), so both could put it in the other's core
+EDGE_MARGIN = 0.5
+
+
+def assemble(results, margin: float = EDGE_MARGIN):
+    """
+    One result from the tiles' records: each tile keeps the records within ``margin`` of its
+    core; records of different tiles closer than max(margin, either fitted radius) are one
+    stem, of which one is kept (the one its own tile owns, then a measured one, then the
+    better supported); ``dedupe_stems`` then removes overlapping stems; ids become 1..N.
+
+    :param results: [(Tile, records of that tile)] with tile-local ids.
+    """
+    import math
+
+    from . import inventory as inv
+
+    cands = []
+    for t, records in results:
+        x0, y0, x1, y1 = t.core
+        for r in records:
+            if not (math.isfinite(r.x) and math.isfinite(r.y)):
+                continue
+            inside = (t.col == 0 or r.x >= x0 - margin) and (t.last_col or r.x < x1 + margin) and (
+                t.row == 0 or r.y >= y0 - margin) and (t.last_row or r.y < y1 + margin)
+            if not inside:
+                continue
+            r.extra["tile"] = t.name
+            r.extra["tile_tree_id"] = int(r.tree_id)
+            support = r.n_band_points * r.inlier_ratio if r.fitted else 0.0
+            cands.append((not t.owns(r.x, r.y), not r.fitted, -support, len(cands), r))
+    cands.sort(key=lambda c: c[:4])
+    kept = []
+    for *_, r in cands:
+        reach = max(margin, r.dbh / 2 if r.fitted else 0.0)
+        dup = any(
+            k.extra["tile"] != r.extra["tile"]
+            and math.hypot(k.x - r.x, k.y - r.y) < max(reach, k.dbh / 2 if k.fitted else 0.0)
+            for k in kept
+        )
+        if not dup:
+            kept.append(r)
+    kept.sort(key=lambda r: (r.extra["tile"], r.extra["tile_tree_id"]))
+    # global ids before dedupe (it tracks records by id, and tile ids repeat), then again after
+    for i, r in enumerate(kept, start=1):
+        r.tree_id = i
+    kept = inv.dedupe_stems(kept)
+    for i, r in enumerate(kept, start=1):
+        r.tree_id = i
+    return kept

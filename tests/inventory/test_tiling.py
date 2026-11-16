@@ -208,3 +208,79 @@ def test_cli_tiled_reapplies_a_review(tmp_path):
     rows = list(csv.DictReader((tmp_path / "t" / "trees.csv").open()))
     hit = [r for r in rows if np.hypot(float(r["x"]) - float(t["x"]), float(r["y"]) - float(t["y"])) < 0.1]
     assert [r["status"] for r in hit] == ["excluded"] and hit[0]["exclusion_reason"] == "shrub"
+
+
+# --- final review fixes ------------------------------------------------------------------------
+
+from forest_inventory_pipeline.errors import FIPError, StageError  # noqa: E402
+from forest_inventory_pipeline.records import TreeRecord  # noqa: E402
+
+
+def test_folder_of_files_tiled_matches_untiled(tmp_path):
+    """Review finding 1: a tile that misses one of several input files must not be dropped."""
+    xyz = make_plot(n_trees=12, size=30.0, seed=2).points
+    folder = tmp_path / "tiles"
+    folder.mkdir()
+    write_las(folder / "a.las", xyz)
+    write_las(folder / "b.las", xyz + [45.0, 0.0, 0.0])
+    cloud = inv.load_cloud(folder)
+    whole = inv.process_cloud(cloud.xyz, cloud.classification, GP, SP, FP)
+    tiled, tiles = tiling.run_tiled([folder], 20.0, 6.0, GP, SP, FP)
+    _same_trees(whole, tiled)
+
+
+def _rec(tid, x, status="ok", dbh=0.3, support=500):
+    fitted = status != "failed"
+    return TreeRecord(tree_id=tid, status=status, x=x, y=10.0, ground_z=0.0, breast_height=1.3,
+                      bh_elevation=1.3, n_points=1000, n_band_points=support,
+                      dbh=dbh if fitted else float("nan"), inlier_ratio=1.0 if fitted else float("nan"),
+                      ci_low=dbh * 0.9 if fitted else float("nan"), ci_high=dbh * 1.1 if fitted else float("nan"))
+
+
+def test_edge_stem_placed_in_the_other_core_by_both_tiles_is_kept_once():
+    """Review finding 2: each tile's fit can put the stem just inside the other tile's core."""
+    a, b = tiling.plan_tiles((0, 0, 40, 20), 20.0, 6.0)  # cores split at x = 20
+    out = tiling.assemble([(a, [_rec(0, 20.01)]), (b, [_rec(0, 19.99)])])
+    assert len(out) == 1 and out[0].tree_id == 1
+
+
+def test_fitted_and_failed_records_of_one_stem_are_kept_once():
+    a, b = tiling.plan_tiles((0, 0, 40, 20), 20.0, 6.0)
+    out = tiling.assemble([(a, [_rec(0, 19.97)]), (b, [_rec(3, 20.05, status="failed")])])
+    assert [r.status for r in out] == ["ok"] and out[0].extra["tile"] == "r0c0"
+
+
+def test_neighbouring_stems_across_an_edge_are_both_kept():
+    a, b = tiling.plan_tiles((0, 0, 40, 20), 20.0, 6.0)
+    out = tiling.assemble([(a, [_rec(0, 19.5), _rec(1, 5.0)]), (b, [_rec(0, 20.5), _rec(1, 35.0)])])
+    assert sorted(round(r.x, 1) for r in out) == [5.0, 19.5, 20.5, 35.0]
+    assert [r.tree_id for r in out] == [1, 2, 3, 4]
+
+
+def test_out_of_memory_in_a_tile_stops_the_run(tmp_path, monkeypatch):
+    """Review finding 3: an unexpected error in a tile is raised, not skipped as an empty tile."""
+    path, _ = _plot(tmp_path)
+
+    def boom(*a, **k):
+        raise StageError("segment", "quickshift++ failed: MemoryError: cannot allocate")
+
+    monkeypatch.setattr(inv, "process_cloud", boom)
+    with pytest.raises(FIPError, match="--tile"):
+        tiling.run_tiled([path], 20.0, 6.0, GP, SP, FP)
+
+
+def test_read_errors_in_a_tile_stop_the_run(tmp_path, monkeypatch):
+    path, _ = _plot(tmp_path)
+    from forest_inventory_pipeline.errors import InputDataError
+
+    real, calls = inv.load_cloud, []
+
+    def bad(*a, **k):  # only the second tile's read fails
+        calls.append(1)
+        if len(calls) == 2:
+            raise InputDataError("plot.las: cannot read LAS/LAZ: corrupt chunk")
+        return real(*a, **k)
+
+    monkeypatch.setattr(inv, "load_cloud", bad)
+    with pytest.raises(InputDataError, match="corrupt chunk"):
+        tiling.run_tiled([path], 20.0, 6.0, GP, SP, FP)
