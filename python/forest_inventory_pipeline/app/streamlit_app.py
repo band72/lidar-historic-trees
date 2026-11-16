@@ -382,6 +382,12 @@ PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
     "f_ovality": ("fit", "ovality_sd", lambda v: round(v * 100, 2)),
     "f_trunk": ("fit", "reject_non_stems", bool),
     "f_roof": ("fit", "reject_roof_posts", bool),
+    "f_minh": ("fit", "min_top_above_breast_height", lambda v: round(float(v), 2)),
+    "f_dom": ("fit", "min_stem_dominance", lambda v: round(float(v), 2)),
+    "f_interior": ("fit", "max_interior_fraction", lambda v: round(float(v), 2)),
+    "f_checktop": ("fit", "stem_check_top", lambda v: round(float(v), 2)),
+    "f_pole": ("fit", "pole_action", str),
+    "f_short": ("fit", "short_action", str),
     "f_density": ("fit", "min_surface_density", lambda v: int(round(v))),
     "f_complete": ("fit", "complete_partial_stems", bool),
     "f_split": ("fit", "split_stems", bool),
@@ -389,12 +395,35 @@ PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
 }
 
 
-def profile_widget_values(name: str, units: DisplayUnits) -> tuple[dict, dict]:
+#: readable names of settings a profile can change (for "What this profile changes")
+SETTING_LABELS = {
+    "cloth_resolution": "ground cloth (m)", "rigidness": "ground rigidness",
+    "k": "neighbours k", "beta": "density β", "voxel_size": "voxel size (m)",
+    "min_tree_points": "min points per tree", "max_z": "height slice top (m)",
+    "inlier_tolerance": "inlier tolerance (m)", "kernel_scale": "robust kernel (m)",
+    "max_radius": "max DBH / 2 (m)", "max_tilt_deg": "max tilt (°)", "ovality_sd": "non-roundness",
+    "reject_non_stems": "trunk check", "reject_roof_posts": "roof check",
+    "min_surface_density": "points per m² of trunk", "complete_partial_stems": "complete partly seen stems",
+    "split_stems": "split merged stems", "stem_gap": "stem gap (m)", "min_dbh": "minimum DBH (m)",
+    "min_top_above_breast_height": "must reach above breast height (m)",
+    "min_stem_dominance": "share of points on the trunk", "max_interior_fraction": "max filled inside",
+    "stem_check_top": "trunk checked up to (m)", "pole_action": "bare column (pole?)",
+    "short_action": "short object, large DBH (shrub?)",
+}
+
+
+def profile_sections(name: str, scanner: str) -> dict[str, dict]:
+    return site_profiles.merged(name, scanner=scanner)
+
+
+def profile_widget_values(
+    name: str, units: DisplayUnits, scanner: str = site_profiles.DEFAULT_SCANNER
+) -> tuple[dict, dict]:
     """
-    The sidebar values of profile ``name``: ({widget key: value}, fit settings that have no
-    widget). Settings the profile leaves out get the pipeline's defaults.
+    The sidebar values of site profile ``name`` with ``scanner``: ({widget key: value}, fit
+    settings that have no widget). Settings the profiles leave out get the defaults.
     """
-    over = site_profiles.get(name).sections()
+    over = profile_sections(name, scanner)
     full = {
         "ground": {**asdict(inv.GroundParams()), **over["ground"]},
         "segment": {**asdict(inv.SegmentParams()), **over["segment"]},
@@ -410,35 +439,67 @@ def profile_widget_values(name: str, units: DisplayUnits) -> tuple[dict, dict]:
 
 
 def _apply_profile() -> None:
-    """Callback: move the sidebar to the chosen profile's settings."""
+    """Callback: move the sidebar to the chosen site and scanner profiles' settings."""
     name = st.session_state.get("profile", site_profiles.DEFAULT)
-    values, extra = profile_widget_values(name, U)
+    scanner = st.session_state.get("scanner", site_profiles.DEFAULT_SCANNER)
+    values, extra = profile_widget_values(name, U, scanner)
     st.session_state.update(values)
     st.session_state["profile_extra"] = extra
 
 
+def _evidence_line(p) -> str:
+    mark = "✓" if p.evidence.startswith("Checked") else "◐" if p.evidence.startswith("Partly") \
+        else "★" if p.evidence.startswith("Saved") else "⚠"
+    return f"{mark} {p.evidence}"
+
+
 def sidebar_profile(units: DisplayUnits) -> None:
-    """Site profile dropdown: sets ground, segmentation and fit sliders for an environment."""
+    """Site and scanner profile dropdowns: set ground, segmentation and fit sliders."""
     if "profile" not in st.session_state:  # first run: the sidebar starts at the defaults
         st.session_state["profile"] = site_profiles.DEFAULT
+        st.session_state["scanner"] = site_profiles.DEFAULT_SCANNER
         values, extra = profile_widget_values(site_profiles.DEFAULT, units)
         for k, v in values.items():
             st.session_state.setdefault(k, v)
         st.session_state.setdefault("profile_extra", extra)
+    names = list(site_profiles.all_profiles())
+    if st.session_state["profile"] not in names:  # a saved profile was deleted
+        st.session_state["profile"] = site_profiles.DEFAULT
     name = st.sidebar.selectbox(
         "Site profile",
-        list(site_profiles.PROFILES),
+        names,
         key="profile",
         on_change=_apply_profile,
-        help="Starting settings for the kind of site. Choosing one moves the sliders below; "
-        "adjust them afterwards if needed. Ground and segmentation changes apply when you "
-        "press **Run tree extraction**; fit changes apply at once.",
+        help="Starting settings for the kind of site (tree criteria). Choosing one moves the "
+        "sliders below; adjust them afterwards if needed. Ground and segmentation changes "
+        "apply when you press **Run tree extraction**; fit changes apply at once. Profiles "
+        "you saved (Settings tab) are listed after the built-in ones.",
     )
-    st.sidebar.caption(site_profiles.get(name).summary)
-    values, _ = profile_widget_values(name, units)
+    scanner = st.sidebar.selectbox(
+        "Scanner",
+        list(site_profiles.SCANNERS),
+        key="scanner",
+        on_change=_apply_profile,
+        help="What recorded the cloud. Sets how densely a trunk surface must be sampled; "
+        "the site profile scales it.",
+    )
+    site, sc = site_profiles.get(name), site_profiles.get_scanner(scanner)
+    st.sidebar.caption(site.summary)
+    st.sidebar.caption(_evidence_line(site) + ("" if scanner == site_profiles.DEFAULT_SCANNER
+                                               else f"  \nScanner: {_evidence_line(sc)}"))
+    over = profile_sections(name, scanner)
+    rows = [(SETTING_LABELS.get(k, k), v) for sec in ("ground", "segment", "fit")
+            for k, v in over[sec].items()]
+    if rows:
+        with st.sidebar.expander(f"What this profile changes ({len(rows)})"):
+            st.markdown("\n".join(f"- {lab}: **{v}**" for lab, v in rows))
+    values, _ = profile_widget_values(name, units, scanner)
     changed = [k for k, v in values.items() if st.session_state.get(k) != v]
     if changed:
-        st.sidebar.caption(f"✎ {len(changed)} setting(s) changed from this profile.")
+        c1, c2 = st.sidebar.columns([3, 2])
+        c1.caption(f"✎ {len(changed)} setting(s) changed from this profile.")
+        c2.button("↺ Reset", key="profile_reset", on_click=_apply_profile,
+                  help="Put every slider back to the chosen profiles' values.")
 
 
 def sidebar_segmentation():
@@ -633,6 +694,24 @@ def sidebar_fit() -> FitParams | None:
             help="Posts of sheds, carports and pole barns look like trunks. Above them, the "
             "material lies on one smooth roof plane; above a tree it never does.",
         )
+        st.slider(
+            "Must reach above breast height (m)", 0.0, 5.0, step=0.1, key="f_minh",
+            disabled=not trunk_check,
+            help="Objects lower than breast height + this are low shrubs or stumps.",
+        )
+        st.slider(
+            "Share of points on the trunk (1 m to crown)", 0.0, 1.0, step=0.05, key="f_dom",
+            disabled=not trunk_check,
+            help="Shrubs, walls and foliage spread far beyond a trunk surface.",
+        )
+        st.slider(
+            "Max. share of points filling the inside", 0.0, 1.0, step=0.05, key="f_interior",
+            disabled=not trunk_check, help="Scanned from outside, a trunk is hollow.",
+        )
+        st.slider(
+            "Trunk checked up to (m)", 1.5, 6.0, step=0.1, key="f_checktop",
+            disabled=not trunk_check, help="Or to the crown base, if lower.",
+        )
         density = st.slider(
             "Min. points per m² of trunk surface",
             0,
@@ -654,6 +733,17 @@ def sidebar_fit() -> FitParams | None:
             "but so are young trees.",
         )
         min_dbh_m = min_dbh * (0.0254 if U.feet else 0.01)
+    with s.expander("Pole and shrub checks"):
+        st.selectbox(
+            "Bare column (a pole, a snag, or a trunk whose crown is out of view)",
+            ["flag", "reject", "off"], key="f_pole", disabled=not trunk_check,
+            help="Flag: a warning to review. Reject: not counted. A vehicle lidar cannot tell "
+            "a pole from a tall pine trunk whose crown is above its view: flag or off for pines.",
+        )
+        st.selectbox(
+            "Short object with a large DBH (a shrub, or a small tree's crown)",
+            ["flag", "reject", "off"], key="f_short", disabled=not trunk_check,
+        )
     with s.expander("Partly seen stems"):
         complete = st.toggle(
             "Complete partly seen stems",
@@ -708,6 +798,12 @@ def sidebar_fit() -> FitParams | None:
             complete_partial_stems=complete,
             reject_non_stems=trunk_check,
             reject_roof_posts=roof,
+            min_top_above_breast_height=float(st.session_state["f_minh"]),
+            min_stem_dominance=float(st.session_state["f_dom"]),
+            max_interior_fraction=float(st.session_state["f_interior"]),
+            stem_check_top=float(st.session_state["f_checktop"]),
+            pole_action=st.session_state["f_pole"],
+            short_action=st.session_state["f_short"],
             min_surface_density=float(density),
             min_dbh=float(min_dbh_m),
             max_band_half_width=max(max_hw, hw),
@@ -1496,6 +1592,63 @@ def settings_panel(
             st.success(f"Saved `{target}`")
         except OSError as exc:
             _fail("Saving settings", exc)
+    profile_save_panel(gp, sp, fp)
+
+
+#: organisation standards, never part of a site profile
+NOT_IN_PROFILES = {"breast_height", "confidence", "ci_method", "model_sd", "n_bootstrap",
+                   "bootstrap_block", "seed", "large_tree_dbh"}
+
+
+def profile_overrides(gp, sp, fp) -> dict[str, dict]:
+    """The current settings that differ from the defaults, as profile sections."""
+    def diff(cur: dict, default: dict) -> dict:
+        return {k: v for k, v in cur.items() if k not in NOT_IN_PROFILES and v != default.get(k)}
+
+    return {
+        "ground": diff(asdict(gp), asdict(inv.GroundParams())),
+        "segment": diff(asdict(sp), asdict(inv.SegmentParams())),
+        "fit": diff(fp.to_dict(), FitParams().to_dict()),
+    }
+
+
+def _save_profile(gp, sp, fp) -> None:
+    name = (st.session_state.get("profile_save_name") or "").strip()
+    try:
+        site_profiles.save_user_profile(
+            name, profile_overrides(gp, sp, fp), st.session_state.get("profile_save_summary", "")
+        )
+        st.session_state["profile_save_msg"] = ("success", f"Saved profile **{name}**; it is now in "
+                                                "the *Site profile* list.")
+    except FIPError as exc:
+        st.session_state["profile_save_msg"] = ("error", str(exc))
+
+
+def profile_save_panel(gp, sp, fp) -> None:
+    st.markdown("**Save these settings as a profile**")
+    over = profile_overrides(gp, sp, fp)
+    n = sum(len(v) for v in over.values())
+    st.caption(
+        f"Stores the {n} setting(s) that differ from the defaults (not breast height, "
+        "confidence or the calibrated uncertainty) under a name of your own. It appears in the "
+        "*Site profile* list and works on the command line: `fip inventory INPUT --profile NAME`. "
+        f"Saved in `{site_profiles.user_profiles_dir()}`."
+    )
+    c1, c2 = st.columns([1, 2])
+    c1.text_input("Name", key="profile_save_name", placeholder="e.g. Old pines")
+    c2.text_input("Description (optional)", key="profile_save_summary")
+    st.button("Save as profile", on_click=_save_profile, args=(gp, sp, fp),
+              disabled=not (st.session_state.get("profile_save_name") or "").strip())
+    msg = st.session_state.pop("profile_save_msg", None)
+    if msg:
+        getattr(st, msg[0])(msg[1])
+    mine = [p for p in site_profiles.all_profiles() if p not in site_profiles.PROFILES]
+    if mine:
+        c1, c2 = st.columns([2, 1])
+        gone = c1.selectbox("Your saved profiles", mine, key="profile_delete_pick")
+        if c2.button("Delete", key="profile_delete"):
+            site_profiles.delete_user_profile(gone)
+            st.rerun()
 
 
 def calibration_panel(records, fp: FitParams):

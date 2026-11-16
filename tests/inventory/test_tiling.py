@@ -106,7 +106,10 @@ def _same_trees(a, b):
     for r in fa:
         j = int(np.argmin(np.hypot(*(xy - [r.x, r.y]).T)))
         assert np.hypot(r.x - fb[j].x, r.y - fb[j].y) < 0.05, (r.x, r.y)
-        assert abs(r.dbh - fb[j].dbh) < 0.003, (r.x, r.y, r.dbh, fb[j].dbh)
+        # 1 cm, the README's criterion: each tile has its own ground model (a few cm apart from
+        # the whole cloud's, and the multithreaded ground filter varies between runs), which
+        # moves a DBH by a few mm; 3 mm failed now and then
+        assert abs(r.dbh - fb[j].dbh) < 0.01, (r.x, r.y, r.dbh, fb[j].dbh)
 
 
 def test_tiled_las_matches_untiled(tmp_path):

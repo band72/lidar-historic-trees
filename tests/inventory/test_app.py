@@ -136,7 +136,8 @@ def test_site_profile_sets_the_sidebar(app):
     sb = app.sidebar
     prof = next(s for s in sb.selectbox if s.label == "Site profile")
     assert prof.value == "Default" and prof.options[1:] == [
-        "Shrubs", "Isolated Trees", "Clear Forest", "Tall Wide Trees", "Large DBH Trees"
+        "Roadside / Farmstead", "Shrubs", "Isolated Trees", "Clear Forest", "Tall Wide Trees",
+        "Large DBH Trees",
     ]
     prof.set_value("Large DBH Trees").run()
     assert not app.exception and not app.error
@@ -155,7 +156,7 @@ def test_site_profile_sets_the_sidebar(app):
     next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
     assert not app.exception and not app.error
     yaml_text = next(c.value for c in app.code if c.value.startswith("# LiDAR Tree Inventory"))
-    assert "min_top_above_breast_height: 1.5" in yaml_text and "site profile: Shrubs" in yaml_text
+    assert "min_top_above_breast_height: 1.2" in yaml_text and "site profile: Shrubs" in yaml_text
     assert "max_tilt_deg: 30.0" in yaml_text  # the reviewer's change is kept
 
 
@@ -210,3 +211,35 @@ def test_georeference_panel_shows_satellite_map_and_gpx(app, tmp_path):
     assert not app.exception and not app.error
     assert any(s.value.startswith("Georeferenced") for s in app.success)
     assert any(d.label.startswith("Download trees.gpx") for d in app.get("download_button"))
+
+
+
+def test_scanner_profile_reset_and_evidence(app):
+    sb = app.sidebar
+    next(s for s in sb.selectbox if s.label == "Site profile").set_value("Large DBH Trees").run()
+    dens = lambda: next(s for s in app.sidebar.slider if s.label.startswith("Min. points per m"))  # noqa: E731
+    assert dens().value == 300  # vehicle 600 x 0.5
+    next(s for s in app.sidebar.selectbox if s.label == "Scanner").set_value("Drone (UAV)").run()
+    assert not app.exception and dens().value == 75  # drone 150 x 0.5
+    assert any(c.value.startswith("✓ Checked on real data") for c in app.sidebar.caption)
+    assert any("What this profile changes" in e.label for e in app.sidebar.expander)
+    dens().set_value(500).run()
+    next(b for b in app.sidebar.button if b.label == "↺ Reset").click().run()
+    assert dens().value == 75
+    next(s for s in app.sidebar.selectbox if s.label == "Site profile").set_value("Shrubs").run()
+    assert next(s for s in app.sidebar.selectbox if s.label.startswith("Short object")).value == "reject"
+    assert any(c.value.startswith("⚠ Untested") for c in app.sidebar.caption)
+
+
+def test_save_current_settings_as_a_profile(app, tmp_path):
+    app.sidebar.number_input[0].set_value(8)
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    next(s for s in app.sidebar.slider if s.label.startswith("Max stem tilt")).set_value(27.5).run()
+    app.text_input(key="profile_save_name").set_value("Old pines").run()
+    next(b for b in app.button if b.label == "Save as profile").click().run()
+    assert not app.exception and any("Saved profile" in s.value for s in app.success)
+    prof = next(s for s in app.sidebar.selectbox if s.label == "Site profile")
+    assert "Old pines" in prof.options
+    from forest_inventory_pipeline import profiles
+
+    assert profiles.get("Old pines").fit == {"max_tilt_deg": 27.5}

@@ -690,14 +690,32 @@ def process_cloud(
     return fit_trees(trees, ground, fp, gp, keep_points=keep_points, overhead=overhead)
 
 
+def column_check(top: float, crown_share: float, dbh: float, fp: FitParams) -> tuple[str, str]:
+    """
+    ("pole" | "short" | "", message) when what is above a stem does not look like a tree's:
+    a bare column (a pole, a dead snag, or a tall trunk whose crown is above the scanner's
+    view) or a short object with a large DBH (a shrub, or a small tree whose crown starts
+    below breast height). Thresholds are ``fp``'s ``pole_*``, ``short_*`` and
+    ``flag_max_crown_share``; what happens is ``fp.pole_action`` / ``fp.short_action``.
+    """
+    if not (np.isfinite(top) and np.isfinite(crown_share)) or crown_share >= fp.flag_max_crown_share:
+        return "", ""
+    if top >= fp.pole_min_top:
+        return "pole", (
+            f"bare column to {top:.1f} m with almost nothing around it ({crown_share:.0%}): "
+            "a pole or a dead snag? (or a tall trunk whose crown is above the scanner's view)"
+        )
+    if top < fp.short_max_top and dbh >= fp.short_min_dbh:
+        return "short", (
+            f"only {top:.1f} m tall for a {dbh * 100:.0f} cm DBH: a shrub, or a small tree's "
+            "crown cut at breast height? (DBH probably not a trunk's)"
+        )
+    return "", ""
+
+
 def column_flag(top: float, crown_share: float, dbh: float) -> str:
-    """
-    A warning for a reviewer when what is above a stem does not look like a tree's. Flags
-    only, never rejections: a vehicle lidar cannot tell a pole from a tall trunk whose crown
-    is above its view, or a shrub from a small tree with a low crown.
-    """
-    if not (np.isfinite(top) and np.isfinite(crown_share)):
-        return ""
+    """The message of :func:`column_check` with the default settings ("" if none)."""
+    return column_check(top, crown_share, dbh, FitParams())[1]
     if top >= 4.0 and crown_share < 0.20:
         return (
             f"bare column to {top:.1f} m with almost nothing around it ({crown_share:.0%}): "
@@ -773,6 +791,16 @@ def fit_trees(
                     "(a post of a shed, carport or pole barn?)"
                 )
                 sf = None
+        column = (float("nan"), float("nan"))
+        if sf is not None and overhead is not None and fit.reject_non_stems:
+            column = overhead.column_profile(sf.center_x, sf.center_y, sf.radius)
+            kind, msg = column_check(column[0], column[1], sf.dbh, fit)
+            action = {"pole": fit.pole_action, "short": fit.short_action}.get(kind, "off")
+            if action == "reject":
+                reason = "rejected: " + msg
+                sf = None
+            elif action == "flag":
+                sf.warnings.append(msg)
 
         gz = float(
             interpolate_ground_z(
@@ -833,12 +861,8 @@ def fit_trees(
             if overhead is not None:
                 vh = overhead.visible_height(sf.center_x, sf.center_y, sf.radius)
                 rec.extra["visible_height_m"] = round(vh, 2) if np.isfinite(vh) else ""
-                top, share = overhead.column_profile(sf.center_x, sf.center_y, sf.radius)
+                share = column[1]
                 rec.extra["crown_share"] = round(share, 2) if np.isfinite(share) else ""
-                flag = column_flag(top, share, sf.dbh)
-                if flag:
-                    sf.warnings.append(flag)
-                    rec.status = STATUS_WARNING
             rec.message = "; ".join(sf.warnings + sf.notes)
             for m in metric_objs:
                 try:

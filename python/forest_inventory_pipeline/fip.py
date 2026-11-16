@@ -368,7 +368,8 @@ def inventory(
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
     model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in the input unit; calibrate with `fip calibrate`.")] = None,
     complete_partial: Annotated[bool, typer.Option("--complete-partial/--no-complete-partial", help="Complete stems seen from one side by measuring over a taller window (fit.complete_partial_stems).")] = False,
-    profile: Annotated[Optional[str], typer.Option("--profile", "-p", help="Site profile to start from: Default, Shrubs, 'Isolated Trees', 'Clear Forest', 'Tall Wide Trees' or 'Large DBH Trees' (as in the app). A --config file and other options override its values.")] = None,
+    profile: Annotated[Optional[str], typer.Option("--profile", "-p", help="Site profile to start from: Default, 'Roadside / Farmstead', Shrubs, 'Isolated Trees', 'Clear Forest', 'Tall Wide Trees', 'Large DBH Trees', or one you saved in the app. A --config file and other options override its values.")] = None,
+    scanner: Annotated[Optional[str], typer.Option("--scanner", help="Scanner profile: 'Vehicle (mobile lidar)' (default), 'Backpack / handheld', 'Tripod (terrestrial)' or 'Drone (UAV)' (a unique start, e.g. drone, is enough). Sets the trunk point density the site profile scales.")] = None,
     exclusions_fp: Annotated[Optional[Path], typer.Option("--exclusions", exists=True, help="Reapply a saved review: exclusions.json from an earlier run (or its folder). Trees are matched by stem position, so ids may differ between runs.")] = None,
     log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
 ):
@@ -394,12 +395,16 @@ def inventory(
         unknown = set(config) - {"ground", "segment", "fit"}
         if unknown:
             raise typer.BadParameter(f"unknown config section(s) {sorted(unknown)}; expected ground, segment, fit")
-        if profile:
+        if profile or scanner:
             from . import profiles
 
-            profile = profiles.get(profile).name
-            config = profiles.merged(profile, config)
-            logger.info(f"site profile: {profile}" + (f" (overridden by {config_fp})" if config_fp else ""))
+            profile = profiles.get(profile or profiles.DEFAULT).name
+            scanner = profiles.get_scanner(scanner or profiles.DEFAULT_SCANNER).name
+            config = profiles.merged(profile, config, scanner)
+            logger.info(
+                f"site profile: {profile}; scanner: {scanner}"
+                + (f" (overridden by {config_fp})" if config_fp else "")
+            )
         try:
             req_unit = "auto" if units == "auto" else normalize_unit(units)
             out_unit_opt = normalize_unit(output_units) if output_units else None
@@ -494,6 +499,7 @@ def inventory(
             crs=crs or cloud.crs, crs_wkt=None if crs and crs != cloud.crs else cloud.crs_wkt,
             ground=gp, segment=sp, input_units=in_unit,
             site_profile=profile,
+            scanner_profile=scanner,
             excluded_by_reviewer=sorted(excluded),
             added_by_reviewer=sorted(added),
             exclusions_file=str(exclusions_fp) if exclusions_fp else None,

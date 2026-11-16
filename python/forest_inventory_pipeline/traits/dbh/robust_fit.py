@@ -140,6 +140,17 @@ class FitParams:
     #: trees with DBH at least this (m) get large_tree = yes (lower-bound DBH: only if even the
     #: lower bound reaches it); 0.5 m is about 20 in
     large_tree_dbh: float = 0.5
+    #: what is above a stem (needs the overhead cloud; see inventory.column_check): a bare
+    #: column seen to pole_min_top m or more, or an object under short_max_top m with a DBH of
+    #: short_min_dbh m or more, each with under flag_max_crown_share of the material around
+    #: it. Actions: "flag" (a warning for the reviewer), "reject", or "off". A vehicle lidar
+    #: cannot tell a pole from a tall trunk whose crown is above its view, so the default flags.
+    pole_action: str = "flag"
+    pole_min_top: float = 4.0
+    short_action: str = "flag"
+    short_max_top: float = 3.6
+    short_min_dbh: float = 0.30
+    flag_max_crown_share: float = 0.2
     roof_layer_fraction: float = 0.2
     roof_min_span: float = 0.3
     #: stop widening once this fraction of the circumference is seen (else use the best window)
@@ -218,6 +229,15 @@ class FitParams:
         require(0.0 < self.roof_layer_fraction <= 1.0, "roof_layer_fraction must be in (0, 1]")
         require(0.0 <= self.roof_min_span <= 2.0, "roof_min_span must be in [0, 2]")
         require(0.0 < self.large_tree_dbh <= 5.0, "large_tree_dbh must be in (0, 5] m")
+        for name in ("pole_action", "short_action"):
+            require(
+                getattr(self, name) in ("flag", "reject", "off"),
+                f"{name} must be flag, reject or off, got {getattr(self, name)!r}",
+            )
+        require(2.0 <= self.pole_min_top <= 40.0, "pole_min_top must be in [2, 40] m")
+        require(1.5 <= self.short_max_top <= 10.0, "short_max_top must be in [1.5, 10] m")
+        require(0.0 <= self.short_min_dbh <= 3.0, "short_min_dbh must be in [0, 3] m")
+        require(0.0 <= self.flag_max_crown_share <= 1.0, "flag_max_crown_share must be in [0, 1]")
         require(
             0.0 <= self.min_one_sided_inlier_ratio <= 1.0,
             "min_one_sided_inlier_ratio must be in [0, 1]",

@@ -9,8 +9,6 @@ there is no terminal to type a path into. The last folders used are remembered p
 from __future__ import annotations
 
 import json
-import os
-import sys
 from pathlib import Path
 
 import streamlit as st
@@ -18,13 +16,9 @@ import streamlit as st
 
 def prefs_path() -> Path:
     """Per-user settings file for the app (last folders)."""
-    if os.environ.get("FIP_HOME"):
-        return Path(os.environ["FIP_HOME"]) / "app_prefs.json"
-    if sys.platform == "win32":
-        base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "LiDARTreeInventory" / "app_prefs.json"
-    base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-    return base / "lidar-tree-inventory" / "app_prefs.json"
+    from forest_inventory_pipeline.profiles import config_dir
+
+    return config_dir() / "app_prefs.json"
 
 
 def load_prefs() -> dict:

@@ -49,6 +49,12 @@ fit:
   roof_layer_fraction: 0.2     # share of the points near the best plane above the stem that lie on it (3 cm)
   roof_min_span: 0.3           # share of the 1.5 m disc around the stem the plane covers
   large_tree_dbh: 0.5          # large_tree = yes at this DBH (m) or more
+  pole_action: flag            # bare column (pole, snag, or trunk with its crown out of view): flag, reject, off
+  pole_min_top: 4.0            # ... seen to at least this height (m)
+  short_action: flag           # short object with a large "DBH" (shrub, small tree's crown): flag, reject, off
+  short_max_top: 3.6           # ... lower than this (m)
+  short_min_dbh: 0.30          # ... with at least this DBH (m)
+  flag_max_crown_share: 0.2    # both: less than this share of the material around the stem above 2.5 m
   complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
   max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems

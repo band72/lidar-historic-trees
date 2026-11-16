@@ -229,20 +229,43 @@ Choose **Display & export units** at the top: *same as cloud*, *m / cm*, *ft / i
 - **Upload**: drag a file into the browser, up to 4 GB.
 - **Point cloud units** (for files): metres, feet or US survey feet.
 
-### Site profile
+### Site profile and scanner
 
-The **Site profile** dropdown, above *2 · Find trees*, sets the ground, segmentation and fit settings for a kind of site. It moves the sliders, so you can still adjust any of them; a note then says how many settings differ from the profile. Ground and segmentation changes apply when you press **Run tree extraction**; fit changes apply at once. The **Settings** tab records the profile you started from, and the command line takes the same profiles with `--profile`.
+Two dropdowns above *2 · Find trees* set the ground, segmentation and fit settings:
 
-| Profile | For | What it changes |
+- **Site profile**: tree criteria for a kind of site.
+- **Scanner**: what depends on the instrument, chiefly how densely a trunk surface must be sampled. A site profile never sets that density itself; it may scale the scanner's (*Large DBH Trees* halves it), so a profile means the same on any scanner.
+
+Choosing either moves the sliders, so you can still adjust any of them. Under the dropdowns:
+
+- the profile's evidence: ✓ checked on real data, ◐ partly checked, ⚠ untested, or ★ saved by you;
+- **What this profile changes**, every setting it sets, including those without a slider;
+- when you have moved sliders, how many settings differ, and **↺ Reset** to go back to the profile.
+
+Ground and segmentation changes apply when you press **Run tree extraction**; fit changes apply at once. The command line takes the same profiles: `fip inventory INPUT --profile "Roadside / Farmstead" --scanner vehicle`. Settings come from the defaults, then the scanner, then the site profile, then a `-c` file, then command-line options.
+
+| Site profile | For | What it changes | Evidence |
+|---|---|---|---|
+| Default | Mixed sites | Nothing | ✓ The whole 2022-03-08 drive (six segments), reviewed in side views |
+| Roadside / Farmstead | Trees along roads, yards and farm buildings, scanned from a vehicle | Lean up to 30° | ✓ Segment 360-480 s: the lean limit added 3 real trees (two leaning trunks, a multi-stem tree) and lost one doubtful 80 cm fit |
+| Shrubs | Trees among dense shrubs and saplings | Stricter trunk check; objects must reach 1.2 m above breast height (2.5 m); short objects with a large "DBH" are **rejected**; minimum DBH 7.5 cm | ⚠ Untested (the 2.5 m keeps the 2.7-2.8 m ornamental trees of the test drive) |
+| Isolated Trees | Parks, open ground, fence lines; trees scanned in passing | Smaller clusters (k 100); lean up to 30° | ✓ Segment 360-480 s, each change alone: k 100 added 10 trees (of 8 reviewed, 7 clear trees and a stem in a bush) and lost 2; the lean limit as above. *Completing partly seen stems* (+1/-2) was dropped |
+| Clear Forest | Open understory, many straight stems close together | Stems split at a 10 cm gap; ground rigidness 2 | ⚠ Untested: no forest segment yet |
+| Tall Wide Trees | Tall trees with wide crowns | Trunk checked up to 3.5 m; DBH up to 2 m; trunk density × 2/3 | ◐ Its 1 m ground cloth was tested alone (+4/-5, one real tree lost) and dropped; the rest untested |
+| Large DBH Trees | Big old and heritage trees | DBH up to 3 m; 30 cm stem gap; 6 % non-roundness; lean up to 30°; trunk density × 0.5; short objects **rejected**; minimum DBH 20 cm | ✓ Segment 360-480 s: kept 83 of the 88 trees of 20 cm or more; of its 8 additions 5 were real trees, 1 a shrub (now rejected), 2 poles fitted with large circles (flagged) |
+
+| Scanner | Changes | Evidence |
 |---|---|---|
-| Default | Mixed sites | Nothing: the pipeline's defaults |
-| Shrubs | Trees among dense shrubs and saplings | Stricter trunk check (more of the points on the trunk, emptier inside); objects must reach 1.5 m above breast height; minimum DBH 7.5 cm |
-| Isolated Trees | Parks, open ground, roadsides, fence lines; trees scanned in passing | Smaller clusters (k 100) keep neighbours apart; tilt up to 30°; 400 points/m² on the trunk; *Complete partly seen stems* on. More found, less certain: on the test drive +18/-4 trees on one segment, of the added ones reviewed about half clear trees (one a large leaning trunk), the rest a pole and ambiguous objects |
-| Clear Forest | Open understory, many straight stems close together | Stems split at a 10 cm gap; tilt up to 15° (steeper is usually a branch); ground rigidness 2 for forest terrain |
-| Tall Wide Trees | Tall trees with wide crowns | Trunk checked up to 3.5 m; DBH up to 2 m; 400 points/m² on the trunk (seen from farther away); 1 m ground cloth for ground hidden under crowns |
-| Large DBH Trees | Big old and heritage trees | DBH up to 3 m; 30 cm stem gap so one big trunk seen in pieces is not split; 6 % non-roundness; tilt up to 30°; 300 points/m²; minimum DBH 20 cm. On the test drive it found 83 of the 88 trees of 20 cm or more found with the defaults, plus 6 |
+| Vehicle (mobile lidar) | Nothing (600 points/m² on the trunk) | ✓ The test drive |
+| Backpack / handheld | *Complete partly seen stems* on (the operator walks around trees) | ⚠ Untested |
+| Tripod (terrestrial) | 300 points/m² (distant trunks are sparse) | ⚠ Untested |
+| Drone (UAV) | 150 points/m² | ⚠ Untested |
 
-The profiles are reasoned starting points, not settings calibrated on your data. None of them changes the segmentation: coarser clusters merged neighbouring trees on the test drive and lost half of them. After a run, check the map and a few rejected clusters, and adjust.
+None of the profiles changes the segmentation's cluster size beyond *Isolated Trees*' smaller clusters: coarser clusters merged neighbouring trees on the test drive and lost half of them.
+
+**Pole and shrub checks** (sidebar, under *3 · Fit stems*): a bare column seen to 4 m or more with almost nothing around it (`pole_*`), and an object under 3.6 m with a DBH of 30 cm or more (`short_*`), can each be **flagged** for review (default), **rejected**, or switched **off**. For a pine stand, set the bare-column check to flag or off: a vehicle lidar cannot tell a pole from a tall trunk whose crown is above its view.
+
+**Your own profiles.** In the **Settings** tab, *Save as profile* stores the settings that differ from the defaults (not breast height, confidence or the calibrated uncertainty) under a name. It appears in the *Site profile* list and works with `--profile NAME`. Saved profiles live in the app's settings folder (`~/.config/lidar-tree-inventory/profiles` on Linux, `%APPDATA%\LiDARTreeInventory\profiles` on Windows) and can be deleted there or in the Settings tab.
 
 ### Step 2 · Find trees
 
@@ -331,7 +354,8 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--ci-method analytic\|bootstrap` | Override the CI method |
 | `--tile SIZE` | Process a large cloud as square tiles of `SIZE` m (at least 20), each with an overlap buffer, and write one result ([details](#large-clouds-tiles)) |
 | `--tile-overlap M` | Buffer around each tile, in m (default 10; at least 5, less than half the tile) |
-| `--profile NAME` | Start from a [site profile](#site-profile) (`Shrubs`, `"Isolated Trees"`, ...); `-c` files and other options override its values. Recorded in `run.json` |
+| `--profile NAME` | Start from a [site profile](#site-profile-and-scanner) (`"Roadside / Farmstead"`, `Shrubs`, ..., or one you saved); `-c` files and other options override its values. Recorded in `run.json` |
+| `--scanner NAME` | [Scanner profile](#site-profile-and-scanner): `vehicle` (default), `backpack`, `tripod` or `drone`. Recorded in `run.json` |
 | `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
 | `--exclusions FILE` | Reapply a saved review: the `exclusions.json` of an earlier run (or its folder), with its exclusions and *This is a tree* additions. Trees are matched by stem position, so this works after changing settings or with `--tile` |
@@ -714,7 +738,7 @@ Whole-drive results (`docs/real_data/2022-03-08_drive/`):
 - [ ] Settle the flagged objects (poles, shrubs) and the 10 lower-bound trees on site; save the decisions as `exclusions.json` and reapply them with `--exclusions`.
 - [ ] Check whether DBH is overestimated for trees seen from one side (some circles looked larger than their trunks in side views).
 - [ ] Improve the two weak segments (240-480 s, GNSS residuals 1.6 and 2.7 m): loop closure in the KISS-ICP stitching or RTK, instead of relying on the tie between segments.
-- [ ] Process a segment **inside** the forest, where stems are seen from several sides.
+- [ ] Process a segment **inside** the forest, where stems are seen from several sides, and check the untested profiles there (*Clear Forest*, *Shrubs*) and the non-vehicle scanner profiles on their own data.
 - [ ] Check `--tile` on a whole-drive cloud stitched as one (memory, run time, and the trees against an untiled run).
 - [ ] Share one ground model across tiles (e.g. ground filtered once on a thinned copy of the whole cloud), so tiled results no longer depend on the tile size: today 88 of 107 trees were identical on a real segment, the rest moved with the ground model.
 
