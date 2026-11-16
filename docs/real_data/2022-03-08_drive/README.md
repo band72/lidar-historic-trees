@@ -2,7 +2,7 @@
 
 **Status: partial results.** No tape DBH exists yet, so these files show what the pipeline finds on a whole mobile-lidar drive. They are plausibility checks, not accuracy figures.
 
-The 11.4-minute drive (2.2 km, vehicle-mounted Ouster 64-beam lidar, standalone GNSS, rural north Florida; see [the first segment](../2022-03-08_ouster_segment/README.md)) was processed in six segments with version 0.1.6, all with the default settings:
+The 11.4-minute drive (2.2 km, vehicle-mounted Ouster 64-beam lidar, standalone GNSS, rural north Florida; see [the first segment](../2022-03-08_ouster_segment/README.md)) was processed in six segments with the code of release 0.1.7, all with the default settings:
 
 ```bash
 python scripts/register_rosbag_kiss_icp.py drive.bag --start 120 --duration 120 -o segment_120-240s.laz   # each segment

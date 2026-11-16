@@ -542,6 +542,7 @@ def calibrate(
     current_model_sd: Annotated[float, typer.Option(help="model_sd used for TREES_CSV (m).")] = 0.005,
 ):
     """Estimate fit.model_sd from field-measured reference trees."""
+    logger.configure(level="info")  # the result is the output: show it whatever LOG_LEVEL says
     import csv as _csv
     import sys
     import numpy as np
