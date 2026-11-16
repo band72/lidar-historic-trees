@@ -75,7 +75,10 @@ class GeoJsonExporter(Exporter):
         crs = opts["crs"] or context.crs
         features = []
         for t in trees:
-            if not t.fitted and (opts["geometry"] == "circle" or not opts["include_failed"]):
+            if opts["geometry"] == "circle":
+                if not t.fitted:
+                    continue
+            elif not (t.located or opts["include_failed"]):
                 continue
             row = t.to_row(unit)
             props = {k: _num(row.get(k)) for k in _PROPS}

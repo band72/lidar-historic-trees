@@ -236,13 +236,13 @@ The **Site profile** dropdown, above *2 · Find trees*, sets the ground, segment
 | Profile | For | What it changes |
 |---|---|---|
 | Default | Mixed sites | Nothing: the pipeline's defaults |
-| Shrubs | Trees among dense shrubs and saplings | Larger clusters (k 200, β 0.6, ≥ 100 points) so shrub fragments do not become trees; stricter trunk check; objects must reach 1.5 m above breast height; minimum DBH 7.5 cm |
-| Isolated Trees | Parks, open ground, roadsides, fence lines; trees scanned in passing | Smaller clusters (k 100) keep neighbours apart; tilt up to 30°; 400 points/m² on the trunk; *Complete partly seen stems* on |
+| Shrubs | Trees among dense shrubs and saplings | Stricter trunk check (more of the points on the trunk, emptier inside); objects must reach 1.5 m above breast height; minimum DBH 7.5 cm |
+| Isolated Trees | Parks, open ground, roadsides, fence lines; trees scanned in passing | Smaller clusters (k 100) keep neighbours apart; tilt up to 30°; 400 points/m² on the trunk; *Complete partly seen stems* on. More found, less certain: on the test drive +18/-4 trees on one segment, of the added ones reviewed about half clear trees (one a large leaning trunk), the rest a pole and ambiguous objects |
 | Clear Forest | Open understory, many straight stems close together | Stems split at a 10 cm gap; tilt up to 15° (steeper is usually a branch); ground rigidness 2 for forest terrain |
-| Tall Wide Trees | Tall trees with wide crowns | Height slice 1-6 m, larger clusters (k 250, β 0.6, 20 cm voxels) so one crown is not split; trunk checked up to 3.5 m; DBH up to 2 m; 1 m ground cloth |
-| Large DBH Trees | Big old and heritage trees | DBH up to 3 m; 30 cm stem gap so one big trunk seen in pieces is not split; looser inlier tolerance and robust kernel (rough bark), 6 % non-roundness, tilt up to 30°; larger clusters; minimum DBH 20 cm |
+| Tall Wide Trees | Tall trees with wide crowns | Trunk checked up to 3.5 m; DBH up to 2 m; 400 points/m² on the trunk (seen from farther away); 1 m ground cloth for ground hidden under crowns |
+| Large DBH Trees | Big old and heritage trees | DBH up to 3 m; 30 cm stem gap so one big trunk seen in pieces is not split; 6 % non-roundness; tilt up to 30°; 300 points/m²; minimum DBH 20 cm. On the test drive it found 83 of the 88 trees of 20 cm or more found with the defaults, plus 6 |
 
-The profiles are reasoned starting points, not settings calibrated on your data. After a run, check the map and a few rejected clusters, and adjust.
+The profiles are reasoned starting points, not settings calibrated on your data. None of them changes the segmentation: coarser clusters merged neighbouring trees on the test drive and lost half of them. After a run, check the map and a few rejected clusters, and adjust.
 
 ### Step 2 · Find trees
 
@@ -280,9 +280,9 @@ These sliders update every result instantly.
 
 - **Summary**: trees fitted, mean DBH, basal area per hectare, and the median CI width. For the demo plot it also shows the RMSE and CI coverage against the true values.
 - **💾 Save results to a folder**: choose an output folder (it starts next to your input file), a name for the run's subfolder (default `<file>_inventory`) and the formats, then press **Save results**. This writes CSV, DXF, GeoJSON, the segmented points, `run.json` and, when the CRS is known, `trees.prj`. It is the same set of files `fip inventory` writes.
-- **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ✖ failed). Hover for details, and click a tree to select it.
+- **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ◬ DBH lower bound, ✖ failed, ⊘ excluded, ✚ added by reviewer). Hover for details, and click a tree to select it. Below it, **🌍 Georeference** puts the trees on a satellite map and gives the GPX, GeoJSON, CSV and [field sheet](#field-check) for the field (see [`fip georeference`](#fip-georeference)).
 - Below the map is a **DBH chart**: every tree's DBH with its confidence interval.
-- **Tree detail**: the breast-height slice with the fitted circle and the CI circles, and a 3D view of the tree with the fitted cylinder.
+- **Tree detail**: the breast-height slice with the fitted circle and the CI circles, and a 3D view of the tree with the fitted cylinder. For a measured tree: **Exclude this tree** (with a reason). For a rejected cluster that is a real tree: **✚ This is a tree** (with a reason); it becomes `added`, a position without a DBH, in the map, CSV, GeoJSON, GPX and DXF (a cross on layer `FIP_ADDED`), and **Not a tree after all** undoes it. Both are saved in `exclusions.json` and reapplied by position.
 - **Table & export**: **Exclude from the results (reviewer)** lists trees you choose to leave out, such as a shrub or structure that passed the checks (or use **Exclude this tree** in *Tree detail*, with an optional reason). Excluded trees stay in the CSV with status `excluded` and an `exclusion_reason`, are left out of totals, the map, DXF and GeoJSON, and are listed in `run.json`. Saving results also writes `exclusions.json`. Load it again under **Reuse a saved review** (or pass `--exclusions` on the command line) to exclude the same trees in a later run: trees are matched by stem position, within 30 cm, so this works after changing settings. Below it, a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
 - **Calibration**: upload field measurements to estimate the systematic uncertainty, then apply it with one click.
 - **Settings**: every setting of the current extraction as a YAML file. Save it next to your results, or download it, to repeat the run or to use it from the command line (`fip inventory INPUT -c inventory.yaml`).
@@ -329,6 +329,7 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
+| `--exclusions FILE` | Reapply a saved review (`exclusions.json`): exclusions and *This is a tree* additions, matched by position |
 | `--profile NAME` | Start from a [site profile](#site-profile) (`Shrubs`, `"Isolated Trees"`, ...); `-c` files and other options override its values. Recorded in `run.json` |
 | `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
@@ -393,10 +394,35 @@ It fits a 2D rotation and shift (no scale; lidar odometry is metric) from the tr
 
 - `trees_wgs84.csv`: every column of `trees.csv` plus `lat`, `lon` and `position_sd_m`
 - `trees_wgs84.geojson`: measured trees as WGS84 points (RFC 7946), for any GIS or phone map app
-- `trees.gpx`: waypoints named `T12 26cm`, for a handheld GPS or a phone app (OsmAnd, Gaia GPS, SW Maps)
+- `trees.gpx`: waypoints named `T12 26cm` (`T12 >=24cm` for a lower-bound DBH, `T40 added` for a tree kept by a reviewer), for a handheld GPS or a phone app (OsmAnd, Gaia GPS, SW Maps)
+- `field_sheet.csv`: one row per tree, named as in the GPX, with blank columns `tape_dbh_cm`, `is_tree`, `species`, `notes` to fill in on site ([field check](#field-check))
 - `georef.json`: the transform, residuals and accuracy; `gnss_fixes.csv`: the fixes used
 
 Accuracy is that of the GNSS. Standalone fixes (no RTK) are good to about ±1 m, and the offset between the GNSS antenna and the lidar (not modelled) adds to that. The fit's residual RMS shows how well the run's shape matches the GNSS track. It cannot reveal a constant GNSS bias. Heights are not georeferenced.
+
+The app does the same on the **Map** tab (*Georeference: satellite map and GPX*): choose the trajectory and the GNSS file (or a `georef.json`), and the trees are shown on satellite imagery (tiles loaded by your browser from Esri's public service; OpenStreetMap when switched off), with the GPX, GeoJSON, CSV and field sheet to download.
+
+### `fip merge`
+
+Long drives are processed in segments (one KISS-ICP run each), each in its own local frame. After `fip georeference` on every segment, this makes **one map of the whole drive**:
+
+```bash
+fip merge drive/segment_*/ -o drive/merged
+```
+
+Writes `trees_merged_wgs84.csv` (with `utm_e`, `utm_n` and the EPSG code of the UTM zone, plus `run`, `run_tree_id` and `also_seen_in`), `trees_merged_wgs84.geojson`, `trees_merged.gpx`, `field_sheet.csv`, `trees.dxf` on the UTM grid (opens in place in CAD/GIS with that CRS) and `merge_report.json`.
+
+A tree seen in two segments is kept once (the better measurement: ok before warning, measured before lower-bound DBH, then the narrower interval). Separate GNSS alignments disagree by a metre or more, and on a weak segment (residual several metres, e.g. under canopy) by more, so before merging **each segment is tied to the others by the trees they share**: the median offset of mutual nearest pairs with agreeing DBH, used only when at least 5 pairs agree to within 0.75 m. Then records closer than `--distance` (1.5 m) with agreeing DBH are merged. `merge_report.json` lists every shift and every merged pair with its distance, to check. `--no-tie` turns tying off (the merge distance then widens with the position uncertainty, up to 3 m).
+
+### Field check
+
+`field_sheet.csv` (from `fip georeference` or `fip merge`, or the app) is the form for checking the map on site. Walk to each waypoint, fill in `tape_dbh_cm` (DBH by tape, at your breast height) and `is_tree` (`yes`/`no`), then:
+
+```bash
+fip calibrate out/trees.csv field_sheet.csv      # or merged/trees_merged_wgs84.csv
+```
+
+It matches the sheet to the trees by `tree_id`, reports how many visited objects were not trees (the false-positive rate), and estimates DBH bias, RMSE, interval coverage and the `model_sd` to use ([calibrating](#9-calibrating-the-confidence-interval)). Trees with a lower-bound DBH and reviewer-added trees are not used for the DBH statistics.
 
 ---
 
@@ -480,7 +506,7 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | Column | Meaning |
 |---|---|
 | `tree_id` | Tree number |
-| `status` | `ok`, `warning` (measured, but check `message`) or `failed` (not measurable; see `message`) |
+| `status` | `ok`, `warning` (measured, but check `message`), `failed` (not measurable; see `message`), `excluded` (removed by a reviewer) or `added` (rejected by the checks but kept as a tree by a reviewer: a position without a DBH) |
 | `length_unit` | `m`, `ft` or `us_ft`: the unit of every length column below |
 | `x`, `y` | Stem centre at breast height, in the input coordinate system |
 | `ground_z` | Terrain elevation under the stem |
@@ -500,6 +526,9 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `tilt_deg`, `axis_x/y/z` | Stem lean |
 | `message` | Warnings or the reason a fit failed |
 | `cluster_id` | Segmentation cluster (differs from `tree_id` when merged trees were split apart) |
+| `large_tree` | `yes` when the DBH is at least `fit.large_tree_dbh` (default 0.5 m, about 20 in) |
+| `visible_height_m` | Top of what the scanner saw above the stem (99th percentile within 1 m of it), in metres. A vehicle lidar often cannot see crown tops, so this is a lower bound on tree height, not the height |
+| `exclusion_reason` | The reviewer's reason for an `excluded` or `added` tree |
 | `basal_area_m2`, `basal_area_ci_low_m2`, `basal_area_ci_high_m2` | Basal area and its interval |
 
 ### `trees.dxf`: CAD drawing (metres or feet)
@@ -600,15 +629,16 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - the inside is empty at breast height (≤ 20 % of points inside 60 % of the radius, `max_interior_fraction`), which foliage fails;
    - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails;
    - the object reaches at least 1 m above breast height (`min_top_above_breast_height`), which low shrubs and stumps fail. Total tree height is deliberately *not* used: a vehicle lidar often cannot see crown tops above about 3 m near the sensor, so real trees can look only 3 m tall;
+   - it is not under a roof (`reject_roof_posts`): posts of sheds, carports and pole barns pass every check above. Above a post, the material lies on one smooth plane: at 3 cm tolerance, ≥ 20 % of the points within 0.5 m of the best plane over the post lie on it (`roof_layer_fraction`), spanning ≥ 30 % of the area within 1.5 m (`roof_min_span`). Real trees scored 8-12 % on the test drive, roofs 28-60 %, also with a tree crown hanging over the roof. The plane is fitted to the raw elevations: the terrain model's few-cm bumps, subtracted point by point, roughened roofs enough to hide them;
    - a stem seen over less than 45 % of its circumference (`one_sided_arc`) has ≥ 35 % of its breast-height points on the circle (`min_one_sided_inlier_ratio`): its diameter rests on the curvature of one side, which foliage, structures or two neighbouring stems cannot provide. On real data such clusters had given 100-130 cm "trees".
 
-   **Stems seen through a gap.** A vehicle lidar often sees only a narrow strip of a trunk (60-90°) between a fence, a wall or other stems. With a few cm of registration blur, that strip fits a 1 m circle as well as the real 20 cm one, so the circle's diameter and centre are meaningless (on real data: 80-90 cm "DBH" for 20-35 cm stems, centres 30-40 cm off). When less than 25 % of the circumference is seen (`min_fit_arc_coverage`), the tree is therefore kept but measured differently: `dbh_method` is *visible width (lower bound)*, the DBH is the strip's width (a chord is never wider than the diameter), `ci_low`/`ci_high` give the honest range (from the width, less 10 % for blur, up to the larger of the flattest circle that fits the strip and twice the width), the stem is placed half the width behind the strip, and the tree is a `warning`. A strip too flat for any stem showing 60° or more (a wall, fence or bench) is rejected. The position of these trees is reliable; their DBH is not a measurement, so filter on `dbh_method` before using DBH or basal area.
+   **Stems seen through a gap.** A vehicle lidar often sees only a narrow strip of a trunk (60-90°) between a fence, a wall or other stems. With a few cm of registration blur, that strip fits a 1 m circle as well as the real 20 cm one, so the circle's diameter and centre are meaningless (on real data: 80-90 cm "DBH" for 20-35 cm stems, centres 30-40 cm off). When less than 25 % of the circumference is seen (`min_fit_arc_coverage`), the tree is therefore kept but measured differently (a strip also fixes no lean: if the free fit fails on tilt or radius, a vertical axis is assumed when a vertical circle also sees under 25 % and holds most of the band): `dbh_method` is *visible width (lower bound)*, the DBH is the strip's width (a chord is never wider than the diameter), `ci_low`/`ci_high` give the honest range (from the width, less 10 % for blur, up to the larger of the flattest circle that fits the strip and twice the width), the stem is placed half the width behind the strip, and the tree is a `warning`. A strip too flat for any stem showing 60° or more (a wall, fence or bench) is rejected. The position of these trees is reliable; their DBH is not a measurement, so filter on `dbh_method` before using DBH or basal area.
 
    Optionally, `min_dbh` (off by default; app: *Minimum DBH*) drops stems thinner than your inventory's threshold, often 7.5-12.7 cm (3-5 in). Shrub stems are usually thinner, but so are young trees.
 
-   The crown base is the first 10 cm slice above breast height + 0.3 m where less than 35 % of the points are on the trunk (`crown_slice_dominance`). A lidar on a vehicle or backpack sees the underside of a low crown as a dense flat layer; without this, trees whose crowns start at about 2 m were rejected.
+   The crown base is the first 10 cm slice above breast height + 0.3 m where less than 35 % of the points are on the trunk (`crown_slice_dominance`). A lidar on a vehicle or backpack sees the underside of a low crown as a dense layer, which would otherwise count against the trunk of a tree whose crown starts at about 2 m.
 
-   Rejected clusters are listed as `failed` with the reason (*"not trunk-like: ..."*). **Lower `min_surface_density` for sparse scans** (about 150 for UAV or distant terrestrial scans), or switch the check off with `reject_non_stems: false`. Known limit: man-made poles (signposts, posts) are hollow vertical cylinders and pass.
+   Rejected clusters are listed as `failed` with the reason (*"not trunk-like: ..."*). **Lower `min_surface_density` for sparse scans** (about 150 for UAV or distant terrestrial scans), or switch the check off with `reject_non_stems: false`. Known limit: free-standing poles (signposts, utility poles, a dead snag) are hollow vertical cylinders and pass; posts under a roof are rejected (above). Exclude the rest in the app; the review is saved and reapplied.
 7. **Quality flags.** A tree becomes a *warning* when its arc coverage is below 60 % (seen from one side, with a wider interval), its CI is wide, or its inlier ratio is low (clutter). It becomes *failed* when it can't be measured (too few band points, no valid circle, implausible lean or size). One tree failing never stops the run.
 
 On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, no false detections, DBH RMSE about 0.25 cm, and the 95 % interval contained the true DBH for every tree. **Real scans have larger errors, so calibrate before relying on the intervals.**
@@ -617,42 +647,37 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 ### Tested on real data
 
-The pipeline has been run on a real 2-minute segment (files and images: [docs/real_data/2022-03-08_ouster_segment](docs/real_data/2022-03-08_ouster_segment/README.md)) recorded at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m) from a vehicle-mounted Ouster 64-beam lidar (stitched with the included KISS-ICP script, 45 M points, mostly open ground with a forest edge 15-25 m away). Findings that shaped the defaults:
+The pipeline has been run on a real drive at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m), recorded from a vehicle-mounted Ouster 64-beam lidar and stitched with the included KISS-ICP script: first one 2-minute segment ([files and images](docs/real_data/2022-03-08_ouster_segment/README.md)), then the whole 11-minute drive in six segments, merged into one map of **269 trees** ([results](docs/real_data/2022-03-08_drive/README.md)). No field DBH exists yet, so these are plausibility checks, not accuracy figures. What image review of the results changed:
 
-- Without the trunk check, 227 of 308 clusters were "measured", but image review showed most were shrubs, posts, walls and sparse scatter. The first trunk check kept only 14 and **missed many real trees**: a planted row of trees whose crowns start at about 2 m. Seen from the vehicle, the underside of such a crown is a dense flat layer, which the check counted against the trunk (and which I first misread as posts holding a roof). Ending the check at the crown base fixed this: 54 trees measured, including all 16 trees of the row. A minimum-height check then removed one low shrub mound (1.7 m tall, previously an 84 cm "tree"), leaving **53**, with every other result unchanged. Image review of the trees added this way found about 30 clear trees and a handful of doubtful ones (an arch, a wall edge, a mound; mostly with DBH over 40 cm).
-- The fit's iteration-limit warning fired on 71 % of trees although DBH had stopped changing (more iterations moved it by less than 0.6 mm); the convergence test is now realistic for noisy data.
-- Memory for 45 M points dropped from 16.7 GB to 7.4 GB (merged-tree splitting now works on 2 cm cells) with identical results.
-- No field DBH exists for this segment, so these are plausibility checks, not accuracy figures.
+- **The trunk check.** Without it, 227 of 308 clusters on the first segment were "measured", most of them shrubs, posts, walls and scatter.
+- **Roof posts.** A row of 16 evenly spaced objects under a flat layer was taken for a planted row of trees with low crowns (the check zone was made to end at the crown base to keep them). The site owner confirmed it is an **open shed**, 40 m long; with carports and porches, 36 of the first segment's 53 "trees" were posts. The roof check rejects them (a smooth plane over the post; 28-60 % of the layer on it, against 8-12 % for trees), leaving 11 trees on that segment. A sample of rejections away from the shed was all posts.
+- **Narrow strips of stems.** Seen through a fence or between stems, a strip of a 20-35 cm trunk fitted an 80-130 cm circle, or a 55° "lean". These trees are now kept with the visible width as a lower-bound DBH (`dbh_method` *visible width (lower bound)*).
+- **Merging segments.** The segments' separate GNSS alignments disagreed by 1-2.5 m (more where GNSS was weak under the trees); tying them together on the trees they share brought 32 of the 40 trees seen twice to within 0.36 m.
+- Also: a realistic convergence test (the iteration-limit warning had fired on 71 % of trees), 7.4 GB instead of 16.7 GB for 45 M points, and Ouster "no return" pixels dropped by the bag reader.
 
-**The DXF export.** `trees.dxf` draws each tree as a DBH circle with its confidence-interval rings, its centre point and a label (tree number, DBH, interval), on separate layers (`FIP_DBH`, `FIP_DBH_WARN`, `FIP_CI`, `FIP_LABEL`, ...). How it looks in a CAD program, from an earlier export:
+The whole drive, georeferenced and merged (UTM 17N); the trees line the farm roads:
+
+<img src="docs/real_data/2022-03-08_drive/drive_map.png" width="420" alt="Merged map of the whole drive: 269 trees along the routes of six segments"/>
+
+**The shed** that was taken for a row of trees (side view along it, and top views at breast height and at roof height), and **objects the roof check rejects** away from it (porch, carport and shed posts):
+
+<img src="docs/real_data/2022-03-08_ouster_segment/shed_row_side_view.png" width="750" alt="Side and top views of the open shed: posts under one continuous roof"/>
+
+<img src="docs/real_data/2022-03-08_ouster_segment/roof_posts_rejected.png" width="420" alt="Side views of posts rejected by the roof check"/>
+
+**The DXF export.** `trees.dxf` draws each tree as a DBH circle with its confidence-interval rings, its centre point and a label (tree number, DBH, interval; `>=` for a lower-bound DBH), on separate layers (`FIP_DBH`, `FIP_DBH_WARN`, `FIP_CI`, `FIP_LABEL`, `FIP_ADDED` for reviewer-added trees, ...). How it looks in a CAD program, from an earlier export:
 
 <img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_example.png" width="700" alt="An earlier DXF export opened in a CAD program, 2D wireframe"/>
 
-The DXF files from this segment, rendered directly from the files with ezdxf. On the left is the first run (227 circles, many on shrubs, posts and walls); on the right, the run with the crown-aware trunk check and the height check (53 trees):
+A close-up of an earlier run's DXF, on the shed posts (then still taken for trees): labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
 
-| `trees.dxf` before the trunk check | `trees.dxf` after the trunk check |
+<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF from an earlier run, on the shed posts"/>
+
+**Breast-height slice from above, before the trunk check and after the first trunk check** (before the roof check, so many of the accepted circles on the left of the right image are shed and carport posts). Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white; local coordinates, route top to bottom, forest edge on the right.
+
+| Before: 227 clusters measured | After the first trunk check: 53 |
 |---|---|
-| <img src="docs/real_data/2022-03-08_ouster_segment/dxf_before_trunk_check.png" width="300" alt="DXF before the trunk check, 227 circles"/> | <img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check.png" width="165" alt="DXF after the trunk check, 54 circles"/> |
-
-Zoomed into the final DXF on the planted row of trees: labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
-
-<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF of the tree row: T186 29.3 cm [26.5-32.1] to T179 22.7 cm [20.8-24.7]"/>
-
-**Breast-height slice from above, before and after the trunk check.** Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white. Coordinates are local (from the stitching, not north-up); the route runs top to bottom and the forest edge is on the right.
-
-| Before: 227 clusters measured | After: 53 accepted |
-|---|---|
-| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the trunk check"/> |
-
-**Close-ups at 1.2-1.4 m** (blue points, white fitted circle, orange CI). Before: filled foliage blobs and near-empty circles fitted to scatter. After: the accepted trunks.
-
-**The planted row of trees** that the first trunk check missed (side views 0-4 m: a trunk under a crown starting at about 2 m), all measured now:
-
-<img src="docs/real_data/2022-03-08_ouster_segment/tree_row_side_views.png" width="750" alt="Side views of the trees in the planted row"/>
-
-| Before | After |
-|---|---|
-| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_stems.png" width="380" alt="Stem close-ups before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_stems.png" width="380" alt="Stem close-ups after the trunk check"/> |
+| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the first trunk check"/> |
 
 ### Stems that are only partly visible
 

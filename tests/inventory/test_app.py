@@ -143,7 +143,7 @@ def test_site_profile_sets_the_sidebar(app):
     slider = lambda label: next(s for s in app.sidebar.slider if s.label.startswith(label))  # noqa: E731
     assert slider("Max DBH").value == 300
     assert slider("Stem gap").value == 30
-    assert slider("Neighbours k").value == 250
+    assert slider("Neighbours k").value == 150  # big-tree profiles keep the segmentation
     mindbh = next(n for n in app.sidebar.number_input if n.label.startswith("Minimum DBH"))
     assert mindbh.value == 20.0
     assert any("heritage" in c.value for c in app.sidebar.caption)
@@ -157,3 +157,56 @@ def test_site_profile_sets_the_sidebar(app):
     yaml_text = next(c.value for c in app.code if c.value.startswith("# LiDAR Tree Inventory"))
     assert "min_top_above_breast_height: 1.5" in yaml_text and "site profile: Shrubs" in yaml_text
     assert "max_tilt_deg: 30.0" in yaml_text  # the reviewer's change is kept
+
+
+def test_reviewer_can_keep_a_rejected_cluster_as_a_tree(app, tmp_path, monkeypatch):
+    import numpy as np
+
+    from forest_inventory_pipeline.synthetic import make_plot
+
+    monkeypatch.setenv("FIP_HOME", str(tmp_path / "home"))
+    plot = make_plot(n_trees=6, seed=6)
+    rng = np.random.default_rng(0)  # a shrub-like blob the checks reject
+    gx, gy = plot.points[:, 0].min() + 3.0, plot.points[:, 1].min() + 3.0
+    gz = float(np.percentile(plot.points[:, 2], 5))
+    pts = np.vstack([plot.points, rng.normal(0, 0.35, (6000, 3)) + [gx, gy, gz + 1.7]])
+    _write_las(tmp_path / "plot.laz", pts)
+    app.sidebar.radio[0].set_value("path").run()
+    app.text_input(key="input_typed").set_value(str(tmp_path / "plot.laz")).run()
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    pick = next(s for s in app.selectbox if any("failed" in str(o) for o in s.options))
+    failed = next(o for o in pick.options if "failed" in str(o))
+    pick.set_value(failed).run()
+    next(b for b in app.button if b.label == "✚ This is a tree").click().run()
+    assert not app.exception and not app.error
+    pick = next(s for s in app.selectbox if any("added by reviewer" in str(o) for o in s.options))
+    assert any(str(o).split(" · ")[0] == str(failed).split(" · ")[0] for o in pick.options
+               if "added" in str(o))
+    assert any(b.label == "Not a tree after all" for b in app.button)
+
+
+def test_georeference_panel_shows_satellite_map_and_gpx(app, tmp_path):
+    import math
+
+    import numpy as np
+
+    from forest_inventory_pipeline import georef
+
+    app.sidebar.number_input[0].set_value(8)
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    # a drive past the demo plot, and GNSS fixes of it under a known rotation and shift
+    t = np.arange(0.0, 60.0, 0.1)
+    xy = np.column_stack([np.linspace(-20, 50, len(t)), 5 * np.sin(t / 10)])
+    np.savetxt(tmp_path / "traj.csv", np.column_stack([t, xy]), delimiter=",",
+               header="time_s,x,y", comments="")
+    th = math.radians(20)
+    en = xy[::5] @ np.array([[math.cos(th), -math.sin(th)], [math.sin(th), math.cos(th)]]).T
+    lat, lon, _ = georef.enu_to_geodetic(np.column_stack([en, np.zeros(len(en))]), 30.08, -83.09, 0)
+    np.savetxt(tmp_path / "gnss.csv", np.column_stack([t[::5], lat, lon]), delimiter=",",
+               header="time_s,lat,lon", comments="", fmt="%.9f")
+    app.text_input(key="georef_traj_typed").set_value(str(tmp_path / "traj.csv")).run()
+    app.text_input(key="georef_gnss_typed").set_value(str(tmp_path / "gnss.csv")).run()
+    next(b for b in app.button if b.label == "Georeference").click().run()
+    assert not app.exception and not app.error
+    assert any(s.value.startswith("Georeferenced") for s in app.success)
+    assert any(d.label.startswith("Download trees.gpx") for d in app.get("download_button"))

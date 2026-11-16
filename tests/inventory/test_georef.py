@@ -108,7 +108,7 @@ def test_georeference_trees_and_outputs(tmp_path, unit):
     assert np.linalg.norm(en[:2] - (np.array([70.0, 10.0]) @ R.T + shift)) < 0.3  # feet converted
     written = georef.write_outputs(rows, cols, tmp_path / "out")
     names = sorted(p.name for p in written)
-    assert names == ["trees.gpx", "trees_wgs84.csv", "trees_wgs84.geojson"]
+    assert names == ["field_sheet.csv", "trees.gpx", "trees_wgs84.csv", "trees_wgs84.geojson"]
     assert len(list(csv.DictReader((tmp_path / "out" / "trees_wgs84.csv").open()))) == 3
     fc = json.loads((tmp_path / "out" / "trees_wgs84.geojson").read_text())
     assert [f["properties"]["tree_id"] for f in fc["features"]] == [1]  # only measured trees

@@ -33,6 +33,7 @@ from forest_inventory_pipeline.calibration import _to_metres, calibrate
 from forest_inventory_pipeline.errors import FIPError
 from forest_inventory_pipeline.plugins import load_plugins, registry
 from forest_inventory_pipeline.records import (
+    STATUS_ADDED,
     STATUS_EXCLUDED,
     STATUS_FAILED,
     STATUS_OK,
@@ -77,8 +78,24 @@ STATUS_STYLE = {
     STATUS_WARNING: dict(color="#fab219", symbol="triangle-up", label="⚠ warning"),
     STATUS_FAILED: dict(color="#d03b3b", symbol="x", label="✖ failed"),
     STATUS_EXCLUDED: dict(color="#8a8a8a", symbol="circle-x-open", label="⊘ excluded"),
+    STATUS_ADDED: dict(color="#2a78d6", symbol="cross", label="✚ added by reviewer"),
 }
-NOT_MEASURED = (STATUS_FAILED, STATUS_EXCLUDED)
+NOT_MEASURED = (STATUS_FAILED, STATUS_EXCLUDED, STATUS_ADDED)
+#: map categories: statuses, with lower-bound DBH trees (seen over too little of the stem to
+#: fix the diameter) split from the other warnings, so their DBH is not read as measured
+LOWER_BOUND = "lower_bound"
+CATEGORY_STYLE = {
+    STATUS_OK: STATUS_STYLE[STATUS_OK],
+    STATUS_WARNING: STATUS_STYLE[STATUS_WARNING],
+    LOWER_BOUND: dict(color="#fab219", symbol="triangle-up-open", label="◬ DBH lower bound"),
+    **{k: v for k, v in STATUS_STYLE.items() if k not in (STATUS_OK, STATUS_WARNING)},
+}
+
+
+def map_category(df: pd.DataFrame) -> pd.Series:
+    method = df["dbh_method"] if "dbh_method" in df else pd.Series("", index=df.index)
+    lower = (df.status == STATUS_WARNING) & method.fillna("").str.startswith("visible width")
+    return df.status.where(~lower, LOWER_BOUND)
 
 
 class DisplayUnits:
@@ -186,12 +203,15 @@ def run_segmentation(cloud, gp: inv.GroundParams, sp: inv.SegmentParams, progres
         raise inv.StageError(
             "segment", "no tree instances found; try a smaller beta, a smaller k or a lower min_z"
         )
+    progress.progress(0.9, "indexing what is above the stems (roof check)…")
+    overhead = inv.OverheadIndex(normalized, non_ground[:, 2])
     progress.progress(1.0, f"found {len(trees)} candidate trees")
     run_id = hashlib.sha1(f"{time.time()}{len(points)}".encode()).hexdigest()[:10]
     return dict(
         run_id=run_id,
         ground=ground,
         trees=trees,
+        overhead=overhead,
         seconds=time.perf_counter() - t0,
         gp=gp,
         sp=sp,
@@ -209,7 +229,7 @@ def fit_all(run_id: str, fit_dict: dict, _seg: dict):
     """Cached on (segmentation run, fit parameters); results are shared, not copied, so
     callers must not mutate them. The underscore argument is not hashed."""
     fp = FitParams(**fit_dict)
-    return inv.fit_trees(_seg["trees"], _seg["ground"], fp, _seg["gp"])
+    return inv.fit_trees(_seg["trees"], _seg["ground"], fp, _seg["gp"], overhead=_seg.get("overhead"))
 
 
 # --------------------------------------------------------------------------- sidebar
@@ -357,6 +377,7 @@ PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
     "f_tilt": ("fit", "max_tilt_deg", float),
     "f_ovality": ("fit", "ovality_sd", lambda v: round(v * 100, 2)),
     "f_trunk": ("fit", "reject_non_stems", bool),
+    "f_roof": ("fit", "reject_roof_posts", bool),
     "f_density": ("fit", "min_surface_density", lambda v: int(round(v))),
     "f_complete": ("fit", "complete_partial_stems", bool),
     "f_split": ("fit", "split_stems", bool),
@@ -601,6 +622,13 @@ def sidebar_fit() -> FitParams | None:
             help="Shrubs, posts, walls and sparse scatter are rejected: a trunk must have most "
             "of its 1-2.5 m points on a hollow, continuous, dense surface.",
         )
+        roof = st.toggle(
+            "Reject posts under a roof",
+            key="f_roof",
+            disabled=not trunk_check,
+            help="Posts of sheds, carports and pole barns look like trunks. Above them, the "
+            "material lies on one smooth roof plane; above a tree it never does.",
+        )
         density = st.slider(
             "Min. points per m² of trunk surface",
             0,
@@ -675,6 +703,7 @@ def sidebar_fit() -> FitParams | None:
             ovality_sd=ovality / 100,
             complete_partial_stems=complete,
             reject_non_stems=trunk_check,
+            reject_roof_posts=roof,
             min_surface_density=float(density),
             min_dbh=float(min_dbh_m),
             max_band_half_width=max(max_hw, hw),
@@ -760,8 +789,9 @@ def summary_row(df: pd.DataFrame, extent: np.ndarray, truth):
 
 
 def _status_legend_traces(fig, df, x, y, sizes=None, hover=None):
-    for status, style in STATUS_STYLE.items():
-        sub = df[df.status == status]
+    cat = map_category(df)
+    for key, style in CATEGORY_STYLE.items():
+        sub = df[cat == key]
         if sub.empty:
             continue
         fig.add_trace(
@@ -835,6 +865,160 @@ def plot_map(df: pd.DataFrame, truth):
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
+
+
+ESRI_IMAGERY = (
+    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+)
+SATELLITE_STYLE = {
+    "version": 8,
+    "sources": {
+        "imagery": {
+            "type": "raster",
+            "tiles": [ESRI_IMAGERY],
+            "tileSize": 256,
+            "attribution": "Imagery © Esri, Maxar, Earthstar Geographics",
+        }
+    },
+    "layers": [{"id": "imagery", "type": "raster", "source": "imagery"}],
+}
+
+
+@st.cache_resource(show_spinner="Fitting the trajectory to the GNSS fixes…", max_entries=8)
+def _fit_georef(trajectory: str, gnss: str):
+    from forest_inventory_pipeline import georef
+
+    fixes = georef.read_gnss(Path(gnss))
+    t, xy = georef.read_trajectory(Path(trajectory))
+    return georef.fit_alignment(t, xy, fixes)
+
+
+def georef_rows(records, alignment) -> list[dict]:
+    """CSV-style rows (metres) of the located trees with lat, lon and position_sd_m."""
+    located = [r for r in records if r.located]
+    if not located:
+        return []
+    xy = np.array([[r.x, r.y] for r in located])
+    lat, lon = alignment.to_latlon(xy)
+    sd = alignment.position_sd(xy)
+    rows = []
+    for r, la, lo, s in zip(located, lat, lon, sd):
+        row = r.to_row("m")
+        row.update(lat=f"{la:.8f}", lon=f"{lo:.8f}", position_sd_m=f"{s:.2f}")
+        rows.append(row)
+    return rows
+
+
+def plot_satellite(rows: list[dict], satellite: bool):
+    d = pd.DataFrame(rows)
+    d["dbh"] = pd.to_numeric(d["dbh"], errors="coerce")
+    fig = go.Figure()
+    cat = map_category(d)
+    for key, style in CATEGORY_STYLE.items():
+        sub = d[cat == key]
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Scattermap(
+                lat=sub.lat.astype(float),
+                lon=sub.lon.astype(float),
+                mode="markers",
+                name=style["label"],
+                marker=dict(
+                    size=np.clip(np.nan_to_num(sub.dbh * 40, nan=10), 9, 30), color=style["color"]
+                ),
+                text=[
+                    f"<b>Tree {r.tree_id}</b> · {style['label']}<br>"
+                    + (f"DBH {U.D(r.dbh):.1f} {U.dl}<br>" if np.isfinite(r.dbh) else "")
+                    + f"{float(r.lat):.6f}, {float(r.lon):.6f} (± {r.position_sd_m} m)"
+                    for r in sub.itertuples()
+                ],
+                hovertemplate="%{text}<extra></extra>",
+            )
+        )
+    fig.update_layout(
+        height=560,
+        margin=dict(l=0, r=0, t=30, b=0),
+        legend=dict(orientation="h", y=1.06),
+        map=dict(
+            style=SATELLITE_STYLE if satellite else "open-street-map",
+            center=dict(lat=float(d.lat.astype(float).mean()), lon=float(d.lon.astype(float).mean())),
+            zoom=17,
+        ),
+    )
+    return fig
+
+
+def georef_panel(records, seg: dict) -> None:
+    """Latitude/longitude for the trees, a satellite map, and GPX/GeoJSON for the field."""
+    from forest_inventory_pipeline import georef
+
+    key = f"georef_{seg['run_id']}"
+    with st.expander("🌍 Georeference: satellite map and GPX", expanded=key in st.session_state):
+        st.caption(
+            "For clouds in local SLAM coordinates: fit the scanner trajectory to the GNSS fixes "
+            "of the same recording (as `fip georeference`), or load the `georef.json` it wrote."
+        )
+        how = st.radio(
+            "Source",
+            ["Trajectory + GNSS", "Saved georef.json"],
+            horizontal=True,
+            key="georef_how",
+            label_visibility="collapsed",
+        )
+        try:
+            if how == "Saved georef.json":
+                path = browse("georef_file", mode="file", extensions={".json"}, pref_key="last_georef_dir")
+                if path and st.button("Use this georeference"):
+                    st.session_state[key] = georef.Alignment.load(Path(path))
+            else:
+                st.caption("Trajectory CSV (time_s, x, y), e.g. from scripts/register_rosbag_kiss_icp.py")
+                traj = browse("georef_traj", mode="file", extensions={".csv"}, pref_key="last_georef_dir")
+                st.caption("GNSS: a CSV (time_s, lat, lon) or the ROS bag with NavSatFix messages")
+                gnss = browse("georef_gnss", mode="file", extensions={".csv", ".bag", ".db3", ".mcap"},
+                              pref_key="last_georef_dir")
+                if traj and gnss and st.button("Georeference"):
+                    st.session_state[key] = _fit_georef(traj, gnss)
+        except FIPError as exc:
+            st.error(str(exc))
+        alignment = st.session_state.get(key)
+        if alignment is None:
+            return
+        rows = georef_rows(records, alignment)
+        if not rows:
+            st.info("No located trees to show.")
+            return
+        st.success(
+            f"Georeferenced: residual {alignment.rms_m:.2f} m over {alignment.n_used} fixes; "
+            f"tree positions ± {min(float(r['position_sd_m']) for r in rows):.1f}-"
+            f"{max(float(r['position_sd_m']) for r in rows):.1f} m (1 sd)."
+        )
+        sat = st.toggle(
+            "Satellite imagery",
+            True,
+            key="georef_sat",
+            help="Imagery tiles are loaded by your browser from Esri's public service (which "
+            "sees the map area you view). Off: OpenStreetMap.",
+        )
+        st.plotly_chart(plot_satellite(rows, sat), width="stretch", theme="streamlit")
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cols = list(rows[0])
+            written = georef.write_outputs(rows, cols, Path(tmp))
+            files = {p.name: p.read_bytes() for p in written}
+        c1, c2, c3, c4 = st.columns(4)
+        c1.download_button("Download trees.gpx (field)", files["trees.gpx"], "trees.gpx",
+                           mime="application/gpx+xml", width="stretch")
+        c2.download_button("Download GeoJSON (WGS84)", files["trees_wgs84.geojson"],
+                           "trees_wgs84.geojson", mime="application/geo+json", width="stretch")
+        c3.download_button("Download CSV (with lat/lon)", files["trees_wgs84.csv"],
+                           "trees_wgs84.csv", mime="text/csv", width="stretch")
+        c4.download_button("Download field sheet", files["field_sheet.csv"], "field_sheet.csv",
+                           mime="text/csv", width="stretch",
+                           help="One row per tree, named as in the GPX, with blank columns for "
+                           "tape DBH, 'is it a tree?' and species. Fill it in on site, then run "
+                           "`fip calibrate trees.csv field_sheet.csv`.")
 
 
 def plot_dbh_ci(df: pd.DataFrame, truth):
@@ -1122,6 +1306,23 @@ def _toggle_exclusion(seg: dict, tid: int) -> None:
         st.session_state.setdefault(reasons_key(seg), {})[tid] = reason
 
 
+def added_key(seg: dict) -> str:
+    return f"added_{seg['run_id']}"
+
+
+def added_map(seg: dict) -> dict[int, str]:
+    """{tree id: reason} of rejected clusters this session's reviewer kept as trees."""
+    return dict(st.session_state.get(added_key(seg), {}))
+
+
+def _toggle_addition(seg: dict, tid: int) -> None:
+    cur = st.session_state.setdefault(added_key(seg), {})
+    if tid in cur:
+        cur.pop(tid)
+    else:
+        cur[tid] = st.session_state.get(f"add_reason_{tid}") or ""
+
+
 def _load_exclusions(seg: dict, records) -> None:
     """Callback: apply a saved exclusions file to this run (matched by stem position)."""
     path = st.session_state.get("excl_file_sel")
@@ -1132,10 +1333,16 @@ def _load_exclusions(seg: dict, records) -> None:
     except FIPError as exc:
         st.session_state["excl_load_msg"] = ("error", str(exc))
         return
+    try:
+        added, unmatched_add = excl.match(records, excl.load(Path(path)), action=excl.ADD)
+    except FIPError:
+        added, unmatched_add = {}, []
+    unmatched = list(unmatched) + list(unmatched_add)
     key = excluded_key(seg)
     st.session_state[key] = sorted(set(st.session_state.get(key, [])) | set(matched))
     st.session_state.setdefault(reasons_key(seg), {}).update(matched)
-    msg = f"Applied {len(matched)} saved exclusion(s) from `{Path(path).name}`."
+    st.session_state.setdefault(added_key(seg), {}).update(added)
+    msg = f"Applied {len(matched)} saved exclusion(s) and {len(added)} addition(s) from `{Path(path).name}`."
     if unmatched:
         msg += f" {len(unmatched)} matched no tree in this run (see the Log tab)."
     st.session_state["excl_load_msg"] = ("warning" if unmatched else "success", msg)
@@ -1143,7 +1350,7 @@ def _load_exclusions(seg: dict, records) -> None:
 
 def exclusion_panel(records, seg: dict) -> None:
     """Reviewer's list of trees to leave out (shrubs, structures the checks let through)."""
-    choices = [r.tree_id for r in records if r.status != STATUS_FAILED]
+    choices = [r.tree_id for r in records if r.status not in (STATUS_FAILED, STATUS_ADDED)]
     by_id = {r.tree_id: r for r in records}
     with st.expander("📂 Reuse a saved review (exclusions.json)", expanded=False):
         st.caption(
@@ -1161,12 +1368,12 @@ def exclusion_panel(records, seg: dict) -> None:
         msg = st.session_state.pop("excl_load_msg", None)
         if msg:
             getattr(st, msg[0])(msg[1])
-        current = excl.from_records(records, excluded_ids(seg), excluded_map(seg))
+        current = excl.excluded_in(records)
         if current:
             import json
 
             st.download_button(
-                f"Download exclusions.json ({len(current)} trees)",
+                f"Download exclusions.json ({len(current)} decisions)",
                 json.dumps(
                     {
                         "format": excl.FORMAT,
@@ -1434,7 +1641,7 @@ def main():
         except Exception as exc:
             _fail("Fitting", exc)
             return
-    records = inv.apply_exclusions(records, excluded_map(seg))
+    records = inv.apply_additions(inv.apply_exclusions(records, excluded_map(seg)), added_map(seg))
     df = to_display(match_truth(records_frame(records), seg.get("truth")))
     if df.empty:
         st.warning("No trees to show.")
@@ -1462,6 +1669,7 @@ def main():
                 )
         except (AttributeError, KeyError, IndexError, TypeError):
             pass
+        georef_panel(records, seg)
         st.plotly_chart(plot_dbh_ci(df, seg.get("truth")), width="stretch", theme="streamlit")
         st.caption(
             f"Bars are {fp.confidence:.0%} confidence intervals ({fp.ci_method}). "
@@ -1482,7 +1690,28 @@ def main():
             ),
         )
         rec = next(r for r in records if r.tree_id == tid)
-        if rec.status != STATUS_FAILED:
+        if rec.status in (STATUS_FAILED, STATUS_ADDED):
+            is_added = rec.status == STATUS_ADDED
+            b1, b2 = st.columns([2, 3])
+            if not is_added:
+                b2.selectbox(
+                    "Reason",
+                    excl.ADD_REASONS,
+                    index=None,
+                    key=f"add_reason_{tid}",
+                    placeholder="Reason (optional)",
+                    label_visibility="collapsed",
+                )
+            b1.button(
+                "Not a tree after all" if is_added else "✚ This is a tree",
+                key=f"toggle_add_{tid}",
+                on_click=_toggle_addition,
+                args=(seg, tid),
+                help="Keep this rejected object as a tree: its position goes to the map, CSV, "
+                "GeoJSON, GPX and DXF (as a cross), without a DBH. Saved with the results in "
+                "exclusions.json and reapplied by position on later runs.",
+            )
+        else:
             is_excl = tid in excluded_ids(seg)
             b1, b2 = st.columns([2, 3])
             if not is_excl:

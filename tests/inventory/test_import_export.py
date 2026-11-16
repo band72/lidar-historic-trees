@@ -340,6 +340,10 @@ def test_same_trees_from_las_laz_and_ply(tmp_path, plot):
         g, ng = inv.segment_ground(cloud.xyz, gp, cloud.classification)
         pts, lab = inv.segment_trees(inv.normalize_heights(g, ng, gp), sp)
         recs = inv.fit_trees(inv.group_trees(pts, lab, 50), g, fp, gp)
-        results[name] = sorted(round(r.dbh, 3) for r in recs if r.fitted)
+        results[name] = sorted(r.dbh for r in recs if r.fitted)
     assert len(results["p.las"]) >= 6
-    assert results["p.las"] == results["p.laz"] == results["p.ply"]
+    # same trees, same DBH; within 2 mm because the multithreaded ground filter can sum in a
+    # different order under load (seen once in a full run on a busy machine)
+    for other in ("p.laz", "p.ply"):
+        assert len(results[other]) == len(results["p.las"])
+        assert np.allclose(results[other], results["p.las"], atol=0.002), (other, results)

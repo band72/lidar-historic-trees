@@ -452,23 +452,30 @@ def inventory(
         trees = inv.group_trees(pts, labels, sp.min_tree_points)
         if not trees:
             raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
-        records = inv.fit_trees(trees, ground, fp, gp, keep_points="points" in export)
+        overhead = inv.OverheadIndex(normalized, non_ground[:, 2]) if fp.reject_roof_posts else None
+        del normalized
+        records = inv.fit_trees(trees, ground, fp, gp, keep_points="points" in export, overhead=overhead)
         excluded: dict[int, str] = {}
+        added: dict[int, str] = {}
         if exclusions_fp:
-            excluded, _ = excl_mod.match(records, excl_mod.load(exclusions_fp))
-            records = inv.apply_exclusions(records, excluded)
+            review = excl_mod.load(exclusions_fp)
+            excluded, _ = excl_mod.match(records, review)
+            added, _ = excl_mod.match(records, review, action=excl_mod.ADD)
+            records = inv.apply_additions(inv.apply_exclusions(records, excluded), added)
         ctx = inv.context_for(
             "; ".join(cloud.sources), fp, units=out_unit,
             crs=crs or cloud.crs, crs_wkt=None if crs and crs != cloud.crs else cloud.crs_wkt,
             ground=gp, segment=sp, input_units=in_unit,
             site_profile=profile,
             excluded_by_reviewer=sorted(excluded),
+            added_by_reviewer=sorted(added),
             exclusions_file=str(exclusions_fp) if exclusions_fp else None,
         )
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
         logger.info(
-            f"done: {s['ok']} ok, {s['warning']} warnings, {s['failed']} failed, {s['excluded']} excluded; "
+            f"done: {s['ok']} ok, {s['warning']} warnings, {s['failed']} failed, {s['excluded']} excluded"
+            + (f", {s['added']} added by reviewer" if s["added"] else "") + "; "
             f"mean DBH {s['mean_dbh'] * 100:.1f} cm; basal area {s['basal_area_m2']:.2f} m^2"
         )
         for w in written:
@@ -488,10 +495,47 @@ def exc_info_str(exc: BaseException) -> str:
     return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
 
 
+def _field_sheet_reference(path: Path, recs) -> "np.ndarray":
+    """Reference trees (x, y, dbh in m) from a filled field sheet, matched to recs by tree_id."""
+    import csv as _csv
+    import numpy as np
+    from .errors import InputDataError
+
+    by_id = {r.tree_id: r for r in recs}
+    rows, checked, not_trees, unknown = [], 0, [], []
+    with path.open(newline="", encoding="utf-8-sig") as fh:
+        for row in _csv.DictReader(fh):
+            row = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+            tid = int(row["tree_id"])
+            verdict = row.get("is_tree", "").lower()
+            if verdict in ("no", "n", "false", "0"):
+                not_trees.append(tid)
+            if verdict or row["tape_dbh_cm"]:
+                checked += 1
+            if not row["tape_dbh_cm"] or verdict in ("no", "n", "false", "0"):
+                continue
+            r = by_id.get(tid)
+            if r is None:
+                unknown.append(tid)
+                continue
+            rows.append([r.x, r.y, float(row["tape_dbh_cm"]) / 100.0])
+    if checked:
+        logger.info(
+            f"field check: {checked} objects visited, {len(not_trees)} were not trees "
+            f"({len(not_trees) / checked:.0%} false positives)"
+            + (f": {', '.join(f'T{t}' for t in not_trees[:15])}" if not_trees else "")
+        )
+    if unknown:
+        logger.warning(f"field sheet ids not in the trees CSV: {unknown[:15]}")
+    if not rows:
+        raise InputDataError(f"{path.name}: no tape_dbh_cm values filled in")
+    return np.asarray(rows)
+
+
 @cli.command()
 def calibrate(
     trees_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="CSV written by `fip inventory`.")],
-    reference_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Field data with columns x, y, dbh.")],
+    reference_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="Field data: columns x, y, dbh; or the field_sheet.csv from `fip georeference` / `fip merge` with tape_dbh_cm (and is_tree) filled in, matched by tree_id.")],
     dbh_unit: Annotated[str, typer.Option(help="Unit of reference dbh: auto (m or cm), m, cm, in or ft.")] = "auto",
     xy_unit: Annotated[Optional[str], typer.Option(help="Unit of reference x, y: m, ft or us_ft (default: the length_unit of TREES_CSV).")] = None,
     max_distance: Annotated[float, typer.Option(help="Max stem position mismatch (m) for matching.")] = 0.5,
@@ -515,19 +559,33 @@ def calibrate(
                 csv_unit = normalize_unit(row.get("length_unit") or "m")
 
                 def f(k, conv=True):
-                    if row.get(k) in (None, ""):
+                    if row.get(k) in (None, "", "nan"):
                         return float("nan")
                     v = float(row[k])
                     return float(to_metres(v, csv_unit)) if conv else v
 
+                x, y = f("x"), f("y")
+                if not np.isfinite(x) and row.get("utm_e"):  # a merged map (fip merge)
+                    x, y = float(row["utm_e"]), float(row["utm_n"])
+                se = f("dbh_se")
+                if not np.isfinite(se):  # from the interval (merged maps carry no se)
+                    se = (f("ci_high") - f("ci_low")) / (2 * 1.96)
+                status = row["status"]
+                if (row.get("dbh_method") or "").startswith("visible width"):
+                    status = "excluded"  # a lower bound, not a measurement: not calibrated
                 recs.append(TreeRecord(
-                    tree_id=int(row["tree_id"]), status=row["status"], x=f("x"), y=f("y"),
+                    tree_id=int(row["tree_id"]), status=status, x=x, y=y,
                     ground_z=f("ground_z"), breast_height=f("breast_height"), bh_elevation=f("bh_elevation"),
-                    n_points=int(row["n_points"]), dbh=f("dbh"), dbh_se=f("dbh_se"),
+                    n_points=int(row.get("n_points") or 0), dbh=f("dbh"), dbh_se=se,
                     ci_low=f("ci_low"), ci_high=f("ci_high"),
                 ))
-        ref = read_reference_csv(reference_csv, dbh_unit)
-        ref[:, :2] = to_metres(ref[:, :2], normalize_unit(xy_unit) if xy_unit else csv_unit)
+        with reference_csv.open(newline="", encoding="utf-8-sig") as fh:
+            ref_cols = {c.strip().lower() for c in (_csv.DictReader(fh).fieldnames or [])}
+        if {"tree_id", "tape_dbh_cm"} <= ref_cols:
+            ref = _field_sheet_reference(reference_csv, recs)
+        else:
+            ref = read_reference_csv(reference_csv, dbh_unit)
+            ref[:, :2] = to_metres(ref[:, :2], normalize_unit(xy_unit) if xy_unit else csv_unit)
         res = _calibrate(recs, ref, current_model_sd, max_distance)
     except (FIPError, KeyError, ValueError) as exc:
         logger.error(f"calibration failed: {exc}")
@@ -600,6 +658,55 @@ def georeference(
         for w in written + ([out / "georef.json"] if not alignment_fp else []):
             logger.info(f"wrote {w}")
     except (FIPError, typer.BadParameter) as exc:
+        logger.error(str(exc))
+        sys.exit(2)
+    except Exception:
+        logger.exception("unexpected failure; full traceback in the log file")
+        sys.exit(1)
+
+
+@cli.command()
+def merge(
+    runs: Annotated[list[Path], typer.Argument(exists=True, help="Run folders (or their trees_wgs84.csv) from `fip georeference`, e.g. the segments of one drive.")],
+    output_dir: Annotated[Path, typer.Option("--output", "-o", file_okay=False, help="Output directory.")] = Path("merged"),
+    distance: Annotated[float, typer.Option(help="Merge distance (m): records from different runs closer than this, with agreeing DBH, are one tree (after tying the runs together; untied runs: widened to 2.5 combined position sd, up to 3 m).")] = 1.5,
+    tie: Annotated[bool, typer.Option("--tie/--no-tie", help="Shift each run onto the others by the offset of the trees they share (removes run-to-run GNSS bias).")] = True,
+    log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
+):
+    """
+    Merge georeferenced runs into one map: trees seen in two runs are kept once (the better
+    measurement). Writes trees_merged_wgs84.csv (with UTM easting/northing),
+    trees_merged_wgs84.geojson, trees_merged.gpx, trees.dxf on the UTM grid and
+    merge_report.json (every merged pair, to check).
+    """
+    import sys
+    from . import merge as mg
+    from .errors import FIPError
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.configure(level=log_level, log_file=output_dir / "merge.log")
+    try:
+        names = [r.name if r.is_dir() else r.parent.name for r in runs]
+        if len(set(names)) < len(names):  # same folder names in different places
+            names = [str(r) for r in runs]
+        trees = [t for r, nm in zip(runs, names) for t in mg.read_run(r, nm)]
+        quality = {nm: mg.run_quality(r) for r, nm in zip(runs, names)}
+        res = mg.merge_trees(trees, distance=distance, run_quality=quality, tie=tie)
+        for o in res.offsets:
+            logger.info(
+                f"{o['run']}: shifted {o['shift_east_m']:+.2f} m E, {o['shift_north_m']:+.2f} m N "
+                f"onto the other runs ({o['tie_trees']} shared trees"
+                + (f", spread {o['spread_m']:.2f} m)" if o.get("tie_trees") else "; not tied)")
+            )
+        written = mg.write_merged(res, output_dir, [str(r) for r in runs])
+        logger.info(
+            f"{res.n_input} trees from {len(runs)} runs -> {len(res.trees)} "
+            f"({len(res.pairs)} seen twice and merged; see merge_report.json); "
+            f"grid {mg.utm_epsg(res.zone, res.north)}"
+        )
+        for w in written:
+            logger.info(f"wrote {w}")
+    except FIPError as exc:
         logger.error(str(exc))
         sys.exit(2)
     except Exception:

@@ -45,6 +45,10 @@ fit:
   min_fit_arc_coverage: 0.25   # less of the circumference seen: diameter undetermined, DBH = visible width (lower bound); 0 = off
   one_sided_arc: 0.45          # stems seen over less than this share of the circumference ...
   min_one_sided_inlier_ratio: 0.35  # ... need this share of breast-height points on the circle
+  reject_roof_posts: true      # posts of sheds/carports: the material above them is one smooth roof plane
+  roof_layer_fraction: 0.2     # share of the points near the best plane above the stem that lie on it (3 cm)
+  roof_min_span: 0.3           # share of the 1.5 m disc around the stem the plane covers
+  large_tree_dbh: 0.5          # large_tree = yes at this DBH (m) or more
   complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
   max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems

@@ -452,7 +452,17 @@ def georeference_trees(trees_csv: Path, alignment: Alignment) -> tuple[list[dict
     return rows, columns + ["lat", "lon", "position_sd_m"]
 
 
+FIELD_SHEET = "field_sheet.csv"
+FIELD_COLUMNS = [
+    "tree_id", "lat", "lon", "position_sd_m", "predicted_dbh_cm", "dbh_method", "status",
+    "tape_dbh_cm", "is_tree", "species", "notes",
+]
+
+
 def _is_tree(row: dict) -> bool:
+    """A tree for the field files: measured, or kept by a reviewer (position only)."""
+    if row.get("status") == "added":
+        return True
     return row.get("status", "ok") in ("ok", "warning") and row.get("dbh", "") not in ("", "nan")
 
 
@@ -494,6 +504,7 @@ def write_outputs(
         "confidence",
         "length_unit",
         "arc_coverage",
+        "dbh_method",
         "position_sd_m",
         "message",
     )
@@ -527,20 +538,39 @@ def write_outputs(
         )
         for r in trees:
             dbh = num(r.get("dbh_cm"))
-            name = f"T{r['tree_id']}" + (f" {dbh:.0f}cm" if isinstance(dbh, float) else "")
-            desc = (
-                (
-                    f"DBH {dbh:.1f} cm; position +/- {r['position_sd_m']} m (1 sd); "
+            lower = str(r.get("dbh_method", "")).startswith("visible width")
+            pos = f"position +/- {r['position_sd_m']} m (1 sd)"
+            if r.get("status") == "added":
+                name = f"T{r['tree_id']} added"
+                desc = f"kept as a tree by a reviewer, DBH not measured; {pos}"
+            elif isinstance(dbh, float):
+                name = f"T{r['tree_id']} {'>=' if lower else ''}{dbh:.0f}cm"
+                desc = (
+                    f"DBH {'at least ' if lower else ''}{dbh:.1f} cm; {pos}; "
                     f"status {r.get('status', '')}"
                 )
-                if isinstance(dbh, float)
-                else ""
-            )
+            else:
+                name, desc = f"T{r['tree_id']}", pos
             fh.write(
                 f'  <wpt lat="{float(r["lat"]):.8f}" lon="{float(r["lon"]):.8f}">'
                 f"<name>{escape(name)}</name><desc>{escape(desc)}</desc>"
                 "<sym>Park</sym></wpt>\n"
             )
         fh.write("</gpx>\n")
+    written.append(p)
+
+    # a sheet for checking the trees in the field; `fip calibrate` reads it back by tree_id
+    p = out_dir / FIELD_SHEET
+    with atomic_write(p, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(FIELD_COLUMNS)
+        for r in trees:
+            dbh = num(r.get("dbh_cm"))
+            w.writerow([
+                r["tree_id"], r["lat"], r["lon"], r.get("position_sd_m", ""),
+                f"{dbh:.1f}" if isinstance(dbh, float) else "",
+                r.get("dbh_method", "") or ("" if r.get("status") != "added" else "added by reviewer"),
+                r.get("status", ""), "", "", "", "",
+            ])
     written.append(p)
     return written

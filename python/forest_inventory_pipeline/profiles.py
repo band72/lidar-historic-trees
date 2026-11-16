@@ -36,10 +36,8 @@ PROFILES: dict[str, Profile] = {
         Profile(DEFAULT, "The pipeline's defaults: a balanced starting point for mixed sites."),
         Profile(
             "Shrubs",
-            "Trees among dense shrubs and saplings: larger clusters so shrub fragments do not "
-            "become trees, a stricter trunk check, objects must reach 2.9 m, and stems under "
-            "7.5 cm DBH are not counted.",
-            segment={"k": 200, "beta": 0.6, "min_tree_points": 100},
+            "Trees among dense shrubs and saplings: a stricter trunk check, objects must reach "
+            "2.9 m, and stems under 7.5 cm DBH are not counted.",
             fit={
                 "reject_non_stems": True,
                 "min_dbh": 0.075,
@@ -68,14 +66,15 @@ PROFILES: dict[str, Profile] = {
             ground={"rigidness": 2},
             fit={"max_tilt_deg": 15.0, "split_stems": True, "stem_gap": 0.10},
         ),
+        # Segmentation is left at the defaults in the two big-tree profiles: coarser clusters
+        # (k 250, beta 0.6, 20 cm voxels) merged neighbouring avenue trees on real data
+        # (379 -> 166 clusters) and lost 50 of 110 trees; a big trunk is one cluster anyway.
         Profile(
             "Tall Wide Trees",
-            "Tall trees with wide crowns: a taller segmentation slice (1-6 m) and larger "
-            "clusters so one crown is not split into several trees, the trunk is checked up to "
-            "3.5 m, DBH up to 2 m, and a coarser ground cloth bridges the ground hidden under "
-            "the crowns.",
+            "Tall trees with wide crowns: the trunk is checked up to 3.5 m, DBH up to 2 m, "
+            "sparser trunk surfaces are accepted (seen from farther away), and a coarser ground "
+            "cloth bridges the ground hidden under the crowns.",
             ground={"cloth_resolution": 1.0},
-            segment={"k": 250, "beta": 0.6, "voxel_size": 0.2, "max_z": 6.0, "min_tree_points": 200},
             fit={
                 "max_radius": 1.0,
                 "stem_check_top": 3.5,
@@ -84,17 +83,15 @@ PROFILES: dict[str, Profile] = {
         ),
         Profile(
             "Large DBH Trees",
-            "Big old and heritage trees (DBH 20 cm to 3 m): larger clusters, DBH up to 3 m, "
-            "a 30 cm stem gap so one big trunk seen in pieces is not split, tolerance for rough "
-            "bark, irregular stems and leaning trunks, and stems under 20 cm are not counted.",
-            ground={"cloth_resolution": 1.0},
-            segment={"k": 250, "beta": 0.6, "voxel_size": 0.2, "min_tree_points": 200},
+            "Big old and heritage trees (DBH 20 cm to 3 m): DBH up to 3 m, a 30 cm stem gap so "
+            "one big trunk seen in pieces is not split, irregular and leaning trunks, sparser "
+            "trunk surfaces, and stems under 20 cm are not counted.",
+            # looser circle tolerances (3 cm inlier, 5 cm kernel) and a 1 m ground cloth let
+            # big real trunks fit as 55-80 deg leans or change their cluster on real data
             fit={
                 "max_radius": 1.5,
                 "min_dbh": 0.20,
                 "stem_gap": 0.30,
-                "inlier_tolerance": 0.03,
-                "kernel_scale": 0.05,
                 "ovality_sd": 0.06,
                 "max_tilt_deg": 30.0,
                 "min_surface_density": 300.0,

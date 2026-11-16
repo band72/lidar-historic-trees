@@ -34,6 +34,9 @@ STATUS_FAILED = "failed"
 #: removed by a person reviewing the results (e.g. a shrub or a structure); kept in the CSV
 #: with this status, left out of totals, maps, DXF and GeoJSON
 STATUS_EXCLUDED = "excluded"
+#: rejected by the checks, but kept as a tree by a reviewer: a position without a measured
+#: DBH. In the CSV, GeoJSON, GPX and DXF (as a marker); left out of DBH and basal-area totals
+STATUS_ADDED = "added"
 
 
 @dataclass
@@ -93,7 +96,15 @@ class TreeRecord:
 
     @property
     def fitted(self) -> bool:
-        return self.status not in (STATUS_FAILED, STATUS_EXCLUDED) and np.isfinite(self.dbh)
+        return (
+            self.status not in (STATUS_FAILED, STATUS_EXCLUDED, STATUS_ADDED)
+            and np.isfinite(self.dbh)
+        )
+
+    @property
+    def located(self) -> bool:
+        """A tree whose position goes on the map: measured, or added by a reviewer."""
+        return (self.fitted or self.status == STATUS_ADDED) and bool(np.isfinite(self.x))
 
     def to_row(self, unit: str = "m") -> dict[str, Any]:
         """

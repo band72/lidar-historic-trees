@@ -30,7 +30,9 @@ def test_profiles_differ_where_their_site_needs_it():
     big = profiles.get("Large DBH Trees").fit
     assert big["max_radius"] * 2 >= 3.0 and big["stem_gap"] > FitParams().stem_gap
     assert profiles.get("Shrubs").fit["min_dbh"] > 0
-    assert profiles.get("Tall Wide Trees").segment["max_z"] > inv.SegmentParams().max_z
+    assert profiles.get("Tall Wide Trees").fit["stem_check_top"] > FitParams().stem_check_top
+    # coarser segmentation merged neighbouring trees on real data: big-tree profiles keep it
+    assert not profiles.get("Large DBH Trees").segment and not profiles.get("Tall Wide Trees").segment
     assert profiles.get("Clear Forest").fit["max_tilt_deg"] < FitParams().max_tilt_deg
 
 
@@ -73,7 +75,7 @@ def test_cli_profile_is_applied_recorded_and_overridable(tmp_path):
     assert params["site_profile"] == "Shrubs"
     assert params["fit"]["min_top_above_breast_height"] == 1.5  # from the profile
     assert params["fit"]["min_dbh"] == 0.05  # the config file wins
-    assert params["segment"]["k"] == 200
+    assert params["segment"]["k"] == 150  # profiles keep the default segmentation
 
     bad = fip("inventory", str(tmp_path / "plot.npy"), "-o", str(tmp_path / "bad"), "--profile", "jungle")
     assert bad.returncode == 2 and "unknown profile" in bad.stdout + bad.stderr

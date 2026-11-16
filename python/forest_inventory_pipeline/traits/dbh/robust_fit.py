@@ -132,6 +132,16 @@ class FitParams:
     #: on the curvature of one side, which foliage, structures or two stems cannot provide
     one_sided_arc: float = 0.45
     min_one_sided_inlier_ratio: float = 0.35
+    #: reject stems under a roof: a post of a shed, carport or pole barn passes the trunk
+    #: checks, but the material just above it lies on one smooth plane (see structures.py).
+    #: Needs the overhead cloud (fit_trees(..., overhead=...)); trees score 0.08-0.09 on
+    #: real data, roofs 0.28-0.60.
+    reject_roof_posts: bool = True
+    #: trees with DBH at least this (m) get large_tree = yes (lower-bound DBH: only if even the
+    #: lower bound reaches it); 0.5 m is about 20 in
+    large_tree_dbh: float = 0.5
+    roof_layer_fraction: float = 0.2
+    roof_min_span: float = 0.3
     #: stop widening once this fraction of the circumference is seen (else use the best window)
     complete_target_coverage: float = 0.85
     max_relative_ci_width: float = 0.25
@@ -205,6 +215,9 @@ class FitParams:
             f"min_fit_arc_coverage must be in [0, 0.6], got {self.min_fit_arc_coverage}",
         )
         require(0.0 <= self.one_sided_arc <= 1.0, "one_sided_arc must be in [0, 1]")
+        require(0.0 < self.roof_layer_fraction <= 1.0, "roof_layer_fraction must be in (0, 1]")
+        require(0.0 <= self.roof_min_span <= 2.0, "roof_min_span must be in [0, 2]")
+        require(0.0 < self.large_tree_dbh <= 5.0, "large_tree_dbh must be in (0, 5] m")
         require(
             0.0 <= self.min_one_sided_inlier_ratio <= 1.0,
             "min_one_sided_inlier_ratio must be in [0, 1]",
@@ -626,6 +639,60 @@ def _fit_once(
     return theta, converged
 
 
+def _vertical_fit(
+    band: np.ndarray, params: FitParams, rng: np.random.Generator
+) -> np.ndarray | None:
+    """
+    A vertical cylinder (2D RANSAC circle, radius within limits) for a stem whose free fit
+    failed on tilt or radius; None unless it sees under ``min_fit_arc_coverage`` of the
+    circumference while holding at least ``min_one_sided_inlier_ratio`` of the band (otherwise
+    the object really leans or is too big, and stays rejected).
+    """
+    if params.min_fit_arc_coverage <= 0:
+        return None
+    try:
+        circle, _ = ransac_circle(
+            band,
+            iterations=params.ransac_iterations,
+            tolerance=params.inlier_tolerance,
+            min_radius=params.min_radius,
+            max_radius=params.max_radius,
+            rng=rng,
+        )
+    except FitError:
+        return None
+    theta = np.array([circle[0], circle[1], 0.0, 0.0, circle[2]])
+    e = residuals(theta, band, params.breast_height)
+    on = np.abs(e) < params.inlier_tolerance
+    # most of the band must be on it: a small circle touching a sliver of a big trunk (or of
+    # clutter) is not a narrow strip of a stem
+    if on.sum() < 10 or on.mean() < params.min_one_sided_inlier_ratio:
+        return None
+    coverage, _ = arc_coverage(_angles(theta, band[on], params.breast_height))
+    return theta if coverage < params.min_fit_arc_coverage else None
+
+
+def _main_strip(points: np.ndarray, theta: np.ndarray, gap: float = 0.10) -> np.ndarray:
+    """
+    The largest continuous piece of ``points`` along the circle ``theta``: points sorted by
+    angle are split wherever consecutive ones are more than ``gap`` (m, along the arc) apart,
+    so scatter elsewhere on a big circle does not widen the strip.
+    """
+    if len(points) < 2:
+        return points
+    ang = np.arctan2(points[:, 1] - theta[1], points[:, 0] - theta[0])
+    order = np.argsort(ang)
+    a = ang[order]
+    # rotate so the largest angular gap (the unseen side) is at the wrap-around
+    d = np.diff(np.r_[a, a[0] + 2 * np.pi])
+    start = (int(np.argmax(d)) + 1) % len(a)
+    order = np.roll(order, -start)
+    a = np.unwrap(ang[order])
+    breaks = np.where(np.diff(a) * float(theta[4]) > gap)[0] + 1
+    pieces = np.split(order, breaks)
+    return points[max(pieces, key=len)]
+
+
 VISIBLE_WIDTH = "visible width (lower bound)"
 #: registration blur and range noise that can hide a strip's bulge (m)
 SMEAR_ALLOWANCE = 0.03
@@ -649,6 +716,7 @@ def _visible_width_fit(
     :param arc: (N, 3) breast-height points on the fitted circle (the visible strip).
     :param theta: the (unusable) cylinder fit, used for its side: the strip faces the scanner.
     """
+    arc = _main_strip(arc, theta)
     if len(arc) < 10:
         raise FitError(f"not trunk-like: {why}, and too few points on it to measure its width")
     xy = arc[:, :2]
@@ -677,6 +745,11 @@ def _visible_width_fit(
     # were seen (chord = D sin 30 deg), whichever is larger
     hi = float(min(max(2.0 * big_r, 2.0 * width), 2.0 * params.max_radius))
     lo = 0.9 * width
+    if params.min_dbh > 0 and hi < params.min_dbh:
+        raise FitError(
+            f"DBH at most {hi * 100:.1f} cm (visible width {width * 100:.1f} cm) is below the "
+            f"minimum of {params.min_dbh * 100:.1f} cm"
+        )
     zq = float(stats.norm.ppf(1 - (1.0 - params.confidence) / 2))
     warning = (
         f"diameter not determinable ({why}): DBH {width * 100:.1f} cm is the visible stem "
@@ -744,13 +817,33 @@ def _fit_window(
     if taper and abs(theta[5]) > 0.05:
         raise FitError(f"implausible taper {theta[5] * 200:.1f} cm/m of diameter")
     tilt = float(np.degrees(np.arctan(np.hypot(a, b))))
-    if tilt > params.max_tilt_deg:
+    assumed_vertical = False
+    bad_tilt = tilt > params.max_tilt_deg
+    bad_radius = not (params.min_radius <= r <= params.max_radius)
+    if (bad_tilt or bad_radius) and not taper:
+        # A narrow strip fixes neither the lean nor the curvature: the cylinder fit can trade
+        # one for the other (real data: a 15 cm stem seen through a fence fitted at 55 deg).
+        # If a vertical circle also sees under min_fit_arc_coverage, the lean was never
+        # measurable: keep the stem with a vertical axis (the visible-width path below).
+        v = _vertical_fit(band, params, np.random.default_rng([params.seed, seed_offset, 1]))
+        if v is not None:
+            theta, converged, tilt, assumed_vertical = v, True, 0.0, True
+            x0, y0, a, b, r = theta[:5]
+            bad_tilt = bad_radius = False
+    if bad_tilt:
         raise FitError(f"fitted axis tilt {tilt:.1f} deg exceeds max {params.max_tilt_deg} deg")
-    if not (params.min_radius <= r <= params.max_radius):
+    if bad_radius:
         raise FitError(
             f"fitted radius {r:.3f} m outside [{params.min_radius}, {params.max_radius}] m"
         )
 
+    e = residuals(theta, band, params.breast_height)
+    inlier = np.abs(e) < params.inlier_tolerance
+    inlier_ratio = float(inlier.mean())
+    rmse = float(np.sqrt(np.mean(e[inlier] ** 2))) if inlier.any() else float("nan")
+    angles = _angles(theta, band[inlier], params.breast_height)
+    coverage, max_gap = arc_coverage(angles)
+    short_arc = params.reject_non_stems and coverage < params.min_fit_arc_coverage
     dominance, continuity, interior = trunk_features(theta, points, params)
     if params.reject_non_stems:
         problems = []
@@ -762,7 +855,8 @@ def _fit_window(
             problems.append(
                 f"trunk surface continuous over only {continuity:.0%} of the height between 1 m and the crown"
             )
-        if interior > params.max_interior_fraction:
+        # on a short arc "inside" is as undetermined as the circle (blobs fail the other checks)
+        if interior > params.max_interior_fraction and not short_arc:
             problems.append(
                 f"{interior:.0%} of breast-height points fill the inside (foliage or shrub?)"
             )
@@ -773,17 +867,11 @@ def _fit_window(
             )
         if problems:
             raise FitError("not trunk-like: " + "; ".join(problems))
-    if params.min_dbh > 0 and 2.0 * r < params.min_dbh:
+    if params.min_dbh > 0 and 2.0 * r < params.min_dbh and not short_arc:
         raise FitError(
             f"DBH {2.0 * r * 100:.1f} cm is below the minimum of {params.min_dbh * 100:.1f} cm"
         )
 
-    e = residuals(theta, band, params.breast_height)
-    inlier = np.abs(e) < params.inlier_tolerance
-    inlier_ratio = float(inlier.mean())
-    rmse = float(np.sqrt(np.mean(e[inlier] ** 2))) if inlier.any() else float("nan")
-    angles = _angles(theta, band[inlier], params.breast_height)
-    coverage, max_gap = arc_coverage(angles)
     seen_area = max(coverage, 0.05) * np.pi * 2.0 * r * 2.0 * params.band_half_width
     surface_density = float(inlier.sum()) / seen_area
     undetermined = ""
@@ -808,13 +896,18 @@ def _fit_window(
         if problems:
             raise FitError("not trunk-like: " + "; ".join(problems))
         if coverage < params.min_fit_arc_coverage:
-            undetermined = f"seen over only {coverage:.0%} of the circumference"
+            undetermined = f"seen over only {coverage:.0%} of the circumference" + (
+                "; lean not measurable, axis assumed vertical" if assumed_vertical else ""
+            )
     if undetermined:
         # The trunk checks passed, so this is a stem, but the visible strip is too short (or
         # too cluttered) to fix the curvature: a big circle fits it as well as the real one.
         # Keep the tree and its position; give the visible width as a lower-bound DBH.
+        # the strip: band points near the (unreliable) circle, with a margin wide enough that
+        # the selection does not hinge on which big circle the fit found
+        strip = band[np.abs(e) < max(2.5 * params.inlier_tolerance, 0.05)]
         return _visible_width_fit(
-            band[inlier], theta, params, undetermined,
+            strip, theta, params, undetermined,
             n_band=len(band), inlier_ratio=inlier_ratio, rmse=rmse, coverage=coverage,
             max_gap=max_gap, tilt=tilt, converged=converged, dominance=dominance,
             surface_density=surface_density, continuity=continuity, interior=interior,

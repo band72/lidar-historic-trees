@@ -18,11 +18,13 @@ Drawing units follow the ``units`` option: metres (labels in cm) or feet (labels
 
 from __future__ import annotations
 
+import math
+
 from pathlib import Path
 from typing import Any, Sequence
 
 from ...errors import ExportError
-from ...records import STATUS_WARNING, TreeRecord
+from ...records import STATUS_ADDED, STATUS_WARNING, TreeRecord
 from ...utils import logger
 from ...units import DXF_INSUNITS, from_metres, is_feet
 from ..base import UNITS_OPTION, ExportContext, Exporter, OptionSpec, atomic_write, output_unit
@@ -35,6 +37,7 @@ LAYERS = {
     "FIP_CENTER": dict(color=7),
     "FIP_LABEL": dict(color=7),
     "FIP_AXIS": dict(color=8),
+    "FIP_ADDED": dict(color=5),  # kept as a tree by a reviewer; no DBH
 }
 APPID = "FIP"
 
@@ -130,8 +133,10 @@ class DxfExporter(Exporter):
                     s_, u_ = 1 / 0.0254, "in"
                 else:
                     s_, u_ = 100.0, "cm"
+                lower = t.dbh_method.startswith("visible width")  # DBH is a lower bound
                 label = (
-                    f"T{t.tree_id} {t.dbh * s_:.1f}{u_} [{t.ci_low * s_:.1f}-{t.ci_high * s_:.1f}]"
+                    f"T{t.tree_id} {'>=' if lower else ''}{t.dbh * s_:.1f}{u_} "
+                    f"[{t.ci_low * s_:.1f}-{t.ci_high * s_:.1f}]"
                 )
                 msp.add_text(
                     label,
@@ -144,13 +149,31 @@ class DxfExporter(Exporter):
             if opts["include_axis"] and opts["z_mode"] == "elevation":
                 msp.add_line((x, y, L(t.ground_z)), center, dxfattribs={"layer": "FIP_AXIS"})
 
+        added = [t for t in trees if t.status == STATUS_ADDED and math.isfinite(t.x)]
+        for t in added:  # a cross: a tree position without a DBH
+            z = L(self._plane_z(t, opts["z_mode"]))
+            x, y, h = L(t.x), L(t.y), L(0.25)
+            msp.add_line((x - h, y, z), (x + h, y, z), dxfattribs={"layer": "FIP_ADDED"})
+            msp.add_line((x, y - h, z), (x, y + h, z), dxfattribs={"layer": "FIP_ADDED"})
+            msp.add_point((x, y, z), dxfattribs={"layer": "FIP_ADDED"}).set_xdata(
+                APPID, [(1000, f"tree_id={t.tree_id}"), (1000, "status=added")]
+            )
+            if opts["include_labels"]:
+                msp.add_text(
+                    f"T{t.tree_id} added (DBH not measured)",
+                    height=L(opts["text_height"]),
+                    dxfattribs={"layer": "FIP_LABEL", "insert": (x + h, y, z)},
+                )
+
         try:
             with atomic_write(Path(path), "wt", encoding="utf-8", newline="") as fh:
                 doc.write(fh)
         except OSError as exc:
             raise ExportError(f"could not write DXF {path}: {exc}") from exc
         logger.info(
-            f"DXF written: {path} ({len(fitted)} trees, z_mode={opts['z_mode']}, units={unit})"
+            f"DXF written: {path} ({len(fitted)} trees"
+            + (f", {len(added)} added by reviewer" if added else "")
+            + f", z_mode={opts['z_mode']}, units={unit})"
         )
         return Path(path)
 

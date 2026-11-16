@@ -33,16 +33,24 @@ from __future__ import annotations
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 from scipy.spatial import KDTree
 
 from . import exclusions
 from .errors import FitError, InputDataError, ParameterError, StageError
+from .structures import OverheadIndex
 from .plugins import ExportContext, load_plugins, registry
 from .preprocess.height_normalization import interpolate_ground_z
-from .records import STATUS_EXCLUDED, STATUS_FAILED, STATUS_OK, STATUS_WARNING, TreeRecord
+from .records import (
+    STATUS_ADDED,
+    STATUS_EXCLUDED,
+    STATUS_FAILED,
+    STATUS_OK,
+    STATUS_WARNING,
+    TreeRecord,
+)
 from .traits.dbh.robust_fit import FitParams, fit_stem
 from .units import METRES_PER_UNIT as METRES_PER_UNIT_
 from .utils import logger
@@ -665,10 +673,14 @@ def fit_trees(
     metrics: Sequence[str] | None = None,
     progress: ProgressFn | None = None,
     keep_points: bool = True,
+    overhead: OverheadIndex | None = None,
 ) -> list[TreeRecord]:
     """
     Fit every tree. One tree failing never aborts the run: its record gets
     ``status='failed'`` and the reason in ``message``.
+
+    :param overhead: the height-normalized cloud above the stems (``OverheadIndex``); with
+        it, posts under a roof are rejected (``fit.reject_roof_posts``).
 
     :param metrics: names of metric plugins to run (None = all registered).
     """
@@ -701,6 +713,20 @@ def fit_trees(
             logger.exception(f"tree {tid}: unexpected error during fit")
             sf = None
             reason = f"internal error: {type(exc).__name__}: {exc}"
+        if sf is not None and overhead is not None and fit.reject_non_stems and fit.reject_roof_posts:
+            rc = overhead.roof(sf.center_x, sf.center_y, sf.radius, fit.breast_height + 0.5, seed=tid)
+            if rc is not None:
+                logger.debug(
+                    f"tree {tid}: roof check layer {rc.layer_fraction:.2f} span {rc.span:.2f} "
+                    f"at {rc.plane_height:.1f} m"
+                )
+            if rc is not None and rc.is_roof(fit.roof_layer_fraction, fit.roof_min_span):
+                reason = (
+                    f"under a roof: {rc.layer_fraction:.0%} of the material around "
+                    f"{rc.plane_height:.1f} m above it lies on one smooth plane "
+                    "(a post of a shed, carport or pole barn?)"
+                )
+                sf = None
 
         gz = float(
             interpolate_ground_z(
@@ -757,6 +783,10 @@ def fit_trees(
             rec.axis = sf.axis
             rec.band_half_width = sf.band_half_width
             rec.dbh_method = sf.dbh_method
+            rec.extra["large_tree"] = "yes" if sf.dbh >= fit.large_tree_dbh else "no"
+            if overhead is not None:
+                vh = overhead.visible_height(sf.center_x, sf.center_y, sf.radius)
+                rec.extra["visible_height_m"] = round(vh, 2) if np.isfinite(vh) else ""
             rec.message = "; ".join(sf.warnings + sf.notes)
             for m in metric_objs:
                 try:
@@ -850,6 +880,38 @@ def apply_exclusions(
     return out
 
 
+def apply_additions(
+    records: Sequence[TreeRecord], added: Mapping[int, str] | Sequence[int]
+) -> list[TreeRecord]:
+    """
+    Records with the given (failed) tree ids kept as trees by a reviewer: status ``added``,
+    a position without a measured DBH. Like :func:`apply_exclusions`, returns new records and
+    leaves the input untouched.
+    """
+    from dataclasses import replace
+
+    reasons = (
+        {int(k): str(v or "") for k, v in added.items()}
+        if isinstance(added, Mapping)
+        else {int(i): "" for i in added}
+    )
+    out = []
+    for r in records:
+        if r.tree_id in reasons and r.status == STATUS_FAILED:
+            reason = reasons[r.tree_id]
+            note = (
+                "kept as a tree by reviewer"
+                + (f": {reason}" if reason else "")
+                + f"; DBH not measured (the checks said: {r.message})"
+            )
+            extra = dict(r.extra)
+            extra["exclusion_reason"] = reason
+            out.append(replace(r, status=STATUS_ADDED, message=note, extra=extra))
+        else:
+            out.append(r)
+    return out
+
+
 def summarize(records: Sequence[TreeRecord]) -> dict:
     statuses = [r.status for r in records]
     fitted = [r for r in records if r.fitted]
@@ -860,6 +922,7 @@ def summarize(records: Sequence[TreeRecord]) -> dict:
         warning=statuses.count(STATUS_WARNING),
         failed=statuses.count(STATUS_FAILED),
         excluded=statuses.count(STATUS_EXCLUDED),
+        added=statuses.count(STATUS_ADDED),
         mean_dbh=float(dbh.mean()) if len(dbh) else float("nan"),
         basal_area_m2=float(np.sum(np.pi * (dbh / 2) ** 2)) if len(dbh) else 0.0,
     )

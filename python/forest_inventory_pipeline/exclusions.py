@@ -1,21 +1,27 @@
 """
-Reviewer exclusions saved to a file, so a review can be reopened and reused on later runs.
+A reviewer's decisions saved to a file, so a review can be reopened and reused on later runs.
 
 A reviewer removes shrubs, posts and other false trees by hand (the app's *Exclude this
-tree*). Tree ids are only stable for one run: change a setting and the same stem can get a
-different id. So each exclusion is stored with its stem position (x, y in metres, input
-frame) and matched to the new results by position; the id is only a fallback for entries
-without a position.
+tree*), and keeps real trees that the checks rejected (*This is a tree*). Tree ids are only
+stable for one run: change a setting and the same stem can get a different id. So each
+decision is stored with its stem position (x, y in metres, input frame) and matched to the
+new results by position; the id is only a fallback for entries without a position.
+Exclusions match measured trees; additions match rejected clusters.
 
-File format (``exclusions.json``, written next to the results whenever trees are excluded)::
+File format (``exclusions.json``, written next to the results whenever there is a decision)::
 
     {
         "format": "lidar-tree-inventory/exclusions",
-        "version": 1,
+        "version": 2,
         "source": "segment_0-120s.laz",
         "units": "m",
-        "trees": [{"tree_id": 12, "x": -37.69, "y": 4.60, "dbh": 0.42, "reason": "shrub"}],
+        "trees": [
+            {"tree_id": 12, "x": -37.69, "y": 4.60, "dbh": 0.42, "reason": "shrub"},
+            {"tree_id": 40, "x": 3.10, "y": 7.25, "action": "add", "reason": "tree"},
+        ],
     }
+
+``action`` is ``exclude`` (the default, and the only one in version 1) or ``add``.
 """
 
 from __future__ import annotations
@@ -29,16 +35,18 @@ from typing import Iterable, Mapping, Sequence
 import numpy as np
 
 from .errors import InputDataError
-from .records import STATUS_EXCLUDED, STATUS_FAILED, TreeRecord
+from .records import STATUS_ADDED, STATUS_EXCLUDED, STATUS_FAILED, TreeRecord
 from .utils import logger
 
 FILE_NAME = "exclusions.json"
 FORMAT = "lidar-tree-inventory/exclusions"
-VERSION = 1
+VERSION = 2
+EXCLUDE, ADD = "exclude", "add"
 #: default position tolerance (m) for matching a saved exclusion to a tree of a new run
 MATCH_TOLERANCE = 0.3
 
 REASONS = ("shrub", "post or structure", "duplicate", "not a tree", "other")
+ADD_REASONS = ("tree (checks too strict)", "tree seen through a gap", "leaning tree", "other")
 
 
 @dataclass(frozen=True)
@@ -48,6 +56,7 @@ class Exclusion:
     y: float | None = None
     dbh: float | None = None
     reason: str = ""
+    action: str = EXCLUDE
 
     @property
     def has_position(self) -> bool:
@@ -58,6 +67,8 @@ class Exclusion:
         d = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in d.items() if v is not None}
         if self.reason:
             d["reason"] = self.reason
+        if self.action != EXCLUDE:
+            d["action"] = self.action
         return d
 
 
@@ -73,8 +84,9 @@ def from_records(
     records: Sequence[TreeRecord],
     ids: Iterable[int],
     reasons: Mapping[int, str] | None = None,
+    action: str = EXCLUDE,
 ) -> list[Exclusion]:
-    """Exclusions for the given tree ids, with each stem's position and DBH."""
+    """Decisions (``action``) for the given tree ids, with each stem's position and DBH."""
     reasons = reasons or {}
     by_id = {r.tree_id: r for r in records}
     out = []
@@ -90,17 +102,19 @@ def from_records(
                 y=_finite(r.y),
                 dbh=_finite(r.dbh),
                 reason=str(reasons.get(tid, "")),
+                action=action,
             )
         )
     return out
 
 
 def excluded_in(records: Sequence[TreeRecord]) -> list[Exclusion]:
-    """The exclusions already applied to these records (status ``excluded``)."""
+    """The reviewer decisions already applied to these records (excluded and added trees)."""
+    reasons = {r.tree_id: r.extra.get("exclusion_reason", "") for r in records}
     return from_records(
-        records,
-        [r.tree_id for r in records if r.status == STATUS_EXCLUDED],
-        {r.tree_id: r.extra.get("exclusion_reason", "") for r in records},
+        records, [r.tree_id for r in records if r.status == STATUS_EXCLUDED], reasons
+    ) + from_records(
+        records, [r.tree_id for r in records if r.status == STATUS_ADDED], reasons, action=ADD
     )
 
 
@@ -121,7 +135,7 @@ def save(path: Path, exclusions: Sequence[Exclusion], source: str = "") -> Path:
     }
     with atomic_write(path, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2)
-    logger.info(f"saved {len(exclusions)} reviewer exclusion(s) to {path}")
+    logger.info(f"saved {len(exclusions)} reviewer decision(s) to {path}")
     return path
 
 
@@ -172,12 +186,16 @@ def load(path: Path) -> list[Exclusion]:
             tid = None if tid is None else int(tid)
         except (TypeError, ValueError) as exc:
             raise InputDataError(f"exclusions file {path}: entry {i} has a bad tree_id") from exc
+        action = str(e.get("action", EXCLUDE))
+        if action not in (EXCLUDE, ADD):
+            raise InputDataError(f"exclusions file {path}: entry {i} has unknown action {action!r}")
         ex = Exclusion(
             tree_id=tid,
             x=_finite(e.get("x")),
             y=_finite(e.get("y")),
             dbh=_finite(e.get("dbh")),
             reason=str(e.get("reason", "")),
+            action=action,
         )
         if ex.tree_id is None and not ex.has_position:
             raise InputDataError(f"exclusions file {path}: entry {i} has neither tree_id nor x, y")
@@ -189,18 +207,27 @@ def match(
     records: Sequence[TreeRecord],
     exclusions: Sequence[Exclusion],
     tolerance: float = MATCH_TOLERANCE,
+    action: str = EXCLUDE,
 ) -> tuple[dict[int, str], list[Exclusion]]:
     """
-    Find the trees of ``records`` that saved exclusions refer to.
+    Find the trees of ``records`` that saved decisions with this ``action`` refer to.
 
-    Entries with a position match the nearest unmatched, not-failed tree whose stem centre is
-    within ``tolerance`` (or the saved stem's radius, if larger), closest pairs first, so two
-    neighbouring exclusions never claim the same tree. Entries without a position match by
-    tree id.
+    Entries with a position match the nearest unmatched candidate whose stem centre is within
+    ``tolerance`` (or the saved stem's radius, if larger), closest pairs first, so two
+    neighbouring entries never claim the same tree. Entries without a position match by tree
+    id. Exclusions match measured trees; additions match rejected (failed) clusters, whose
+    position may move more between runs, so their tolerance is doubled.
 
-    :return: ``{tree_id: reason}`` of matched trees and the exclusions that matched nothing.
+    :return: ``{tree_id: reason}`` of matched trees and the entries that matched nothing.
     """
-    candidates = [r for r in records if r.status != STATUS_FAILED and np.isfinite(r.x)]
+    exclusions = [e for e in exclusions if e.action == action]
+    if not exclusions:
+        return {}, []
+    if action == ADD:
+        candidates = [r for r in records if r.status == STATUS_FAILED and np.isfinite(r.x)]
+        tolerance *= 2
+    else:
+        candidates = [r for r in records if r.status != STATUS_FAILED and np.isfinite(r.x)]
     matched: dict[int, str] = {}
     unmatched: list[Exclusion] = []
 
@@ -229,9 +256,10 @@ def match(
         else:
             unmatched.append(e)
 
+    what = "addition(s)" if action == ADD else "exclusion(s)"
     if unmatched:
         logger.warning(
-            f"{len(unmatched)} saved exclusion(s) matched no tree of this run (the stem was not "
+            f"{len(unmatched)} saved {what} matched no tree of this run (the stem was not "
             "found, or the input/coordinates differ): "
             + ", ".join(
                 f"T{e.tree_id}" if not e.has_position else f"({e.x:.2f}, {e.y:.2f})"
@@ -239,5 +267,5 @@ def match(
             )
             + (" …" if len(unmatched) > 10 else "")
         )
-    logger.info(f"applied {len(matched)} of {len(exclusions)} saved exclusion(s)")
+    logger.info(f"applied {len(matched)} of {len(exclusions)} saved {what}")
     return matched, unmatched
