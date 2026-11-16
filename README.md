@@ -680,6 +680,22 @@ A close-up of an earlier run's DXF, on the shed posts (then still taken for tree
 |---|---|
 | <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the first trunk check"/> |
 
+#### To do: real-data fixtures and results
+
+Shed fixture and object fixtures (`tests/data/shed_row_2022-03-08.laz`, `tests/data/real_objects_2022-03-08.npz`):
+
+- [ ] Add the objects flagged for review on the whole drive (6 possible poles, 4 possible shrubs) to `real_objects_2022-03-08.npz` once their identity is confirmed in the field, and pin their outcome in `test_real_objects.py`.
+- [ ] Add roof types not yet seen: flat metal roofs, roofs steeper than about 37° (the plane search ignores them), and a tree growing through or beside a roof (it must stay a tree).
+- [ ] Add a free-standing pole and a tall bare trunk (an old pine with a high crown) side by side, to test whether anything can tell them apart when the scanner's trajectory is known.
+
+Whole-drive results (`docs/real_data/2022-03-08_drive/`):
+
+- [ ] **Field check**: walk `trees_merged.gpx`, fill in `field_sheet.csv` (tape DBH, is it a tree), then `fip calibrate trees_merged_wgs84.csv field_sheet.csv`. Publish the DBH bias, RMSE, interval coverage and false-positive rate here: so far there are no accuracy figures for real data.
+- [ ] Settle the flagged objects (poles, shrubs) and the 10 lower-bound trees on site; save the decisions as `exclusions.json` and reapply them with `--exclusions`.
+- [ ] Check whether DBH is overestimated for trees seen from one side (some circles looked larger than their trunks in side views).
+- [ ] Improve the two weak segments (240-480 s, GNSS residuals 1.6 and 2.7 m): loop closure in the KISS-ICP stitching or RTK, instead of relying on the tie between segments.
+- [ ] Process a segment **inside** the forest, where stems are seen from several sides.
+
 ### Stems that are only partly visible
 
 When the scan sees only one side of a trunk, the program still measures it, says how much of the circumference it saw (`arc_coverage`), **flags it as a `warning`**, and **widens its interval**.
