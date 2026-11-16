@@ -665,6 +665,27 @@ def split_multi_stem(
     return out, parent
 
 
+def column_flag(top: float, crown_share: float, dbh: float) -> str:
+    """
+    A warning for a reviewer when what is above a stem does not look like a tree's. Flags
+    only, never rejections: a vehicle lidar cannot tell a pole from a tall trunk whose crown
+    is above its view, or a shrub from a small tree with a low crown.
+    """
+    if not (np.isfinite(top) and np.isfinite(crown_share)):
+        return ""
+    if top >= 4.0 and crown_share < 0.20:
+        return (
+            f"bare column to {top:.1f} m with almost nothing around it ({crown_share:.0%}): "
+            "a pole or a dead snag? (or a tall trunk whose crown is above the scanner's view)"
+        )
+    if top < 3.6 and dbh >= 0.30 and crown_share < 0.2:
+        return (
+            f"only {top:.1f} m tall for a {dbh * 100:.0f} cm DBH: a shrub, or a small tree's "
+            "crown cut at breast height? (DBH probably not a trunk's)"
+        )
+    return ""
+
+
 def fit_trees(
     trees: dict[int, np.ndarray],
     ground: np.ndarray,
@@ -787,6 +808,12 @@ def fit_trees(
             if overhead is not None:
                 vh = overhead.visible_height(sf.center_x, sf.center_y, sf.radius)
                 rec.extra["visible_height_m"] = round(vh, 2) if np.isfinite(vh) else ""
+                top, share = overhead.column_profile(sf.center_x, sf.center_y, sf.radius)
+                rec.extra["crown_share"] = round(share, 2) if np.isfinite(share) else ""
+                flag = column_flag(top, share, sf.dbh)
+                if flag:
+                    sf.warnings.append(flag)
+                    rec.status = STATUS_WARNING
             rec.message = "; ".join(sf.warnings + sf.notes)
             for m in metric_objs:
                 try:

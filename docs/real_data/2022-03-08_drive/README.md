@@ -13,14 +13,14 @@ fip merge segment_*/ -o merged
 
 | Segment | Trees | GNSS fit residual | Shift onto the other segments (from shared trees) |
 |---|---|---|---|
-| 0-120 s | 11 | 0.68 m | 0.95 m (5 shared trees, spread 0.04 m) |
-| 120-240 s | 48 | 0.49 m | reference (best fit) |
-| 240-360 s | 75 | 1.59 m | 2.47 m (5 shared trees, spread 0.15 m) |
-| 360-480 s | 110 | 2.72 m | 2.22 m (17 shared trees, spread 0.20 m) |
-| 480-600 s | 51 | 0.71 m | none (no shared trees) |
+| 0-120 s | 8 | 0.68 m | 0.95 m (5 shared trees, spread 0.04 m) |
+| 120-240 s | 47 | 0.49 m | reference (best fit) |
+| 240-360 s | 74 | 1.59 m | 2.47 m (5 shared trees, spread 0.15 m) |
+| 360-480 s | 107 | 2.72 m | 2.22 m (17 shared trees, spread 0.20 m) |
+| 480-600 s | 49 | 0.71 m | none (no shared trees) |
 | 600-690 s | 14 | 0.50 m | none (no shared trees) |
 
-**309 records → 269 trees**: 40 trees were seen in two segments and kept once. After tying the segments together on their shared trees, 32 of the 40 merged pairs lie within 0.36 m of each other. Without it, the same pairs were 1.9-2.6 m apart: the two segments in the trees (240-480 s) have the weakest GNSS (reported ±1.2-1.4 m, residuals of 1.6 and 2.7 m), where a rigid alignment is off by a few metres.
+**299 records → 260 trees**: 39 trees were seen in two segments and kept once. After tying the segments together on their shared trees, 33 of the 39 merged pairs lie within 0.36 m of each other. Without it, the same pairs were 1.9-2.6 m apart: the two segments in the trees (240-480 s) have the weakest GNSS (reported ±1.2-1.4 m, residuals of 1.6 and 2.7 m), where a rigid alignment is off by a few metres.
 
 ![The merged map with every segment's route](drive_map.png)
 
@@ -32,7 +32,7 @@ The trees line the farm roads. A random sample from the western road (segment 48
 
 | File | Content |
 |---|---|
-| `trees_merged_wgs84.csv` | The 269 trees: latitude/longitude, UTM 17N (EPSG:32617) easting/northing, DBH and its interval, `dbh_method`, the segment and its tree number, and which other segment also saw it |
+| `trees_merged_wgs84.csv` | The 260 trees: latitude/longitude, UTM 17N (EPSG:32617) easting/northing, DBH and its interval, `dbh_method`, the segment and its tree number, and which other segment also saw it |
 | `trees_merged_wgs84.geojson`, `trees_merged.gpx` | The same, for GIS and for a phone or handheld GPS in the field |
 | `field_sheet.csv` | The form for the field check: fill in `tape_dbh_cm` and `is_tree`, then `fip calibrate trees_merged_wgs84.csv field_sheet.csv` |
 | `merge_report.json` | Every shift and every merged pair with its distance and both DBH |
@@ -42,4 +42,4 @@ The trees line the farm roads. A random sample from the western road (segment 48
 
 - **Positions** are as good as the GNSS: about ±1 m where the fit residual is under 1 m, a few metres in the two weak segments (their relative positions are tied; the whole is still only as good as the reference segment).
 - **DBH** of trees seen from the road is often from one side; several circles look larger than their trunks in the side views. Only tape measurements can tell.
-- **Poles** without a crown pass; exclude them in the app (the review is saved and reapplied).
+- **Flagged for review** (status `warning`, *◇ check* on the app's map): 6 bare columns (a pole or snag, or a trunk whose crown the scanner did not see) and 4 short objects with a large "DBH" (a shrub, or a small tree's crown at breast height). 10 trees have a lower-bound DBH. Exclude or keep them in the app; the review is saved and reapplied.

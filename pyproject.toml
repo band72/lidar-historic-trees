@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "forest_inventory_pipeline"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
     "open3d>=0.17",
     "typer[all]",

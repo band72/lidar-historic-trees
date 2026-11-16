@@ -84,10 +84,12 @@ NOT_MEASURED = (STATUS_FAILED, STATUS_EXCLUDED, STATUS_ADDED)
 #: map categories: statuses, with lower-bound DBH trees (seen over too little of the stem to
 #: fix the diameter) split from the other warnings, so their DBH is not read as measured
 LOWER_BOUND = "lower_bound"
+CHECK = "check"  # flagged: possibly a pole/snag, or a shrub (see inventory.column_flag)
 CATEGORY_STYLE = {
     STATUS_OK: STATUS_STYLE[STATUS_OK],
     STATUS_WARNING: STATUS_STYLE[STATUS_WARNING],
     LOWER_BOUND: dict(color="#fab219", symbol="triangle-up-open", label="◬ DBH lower bound"),
+    CHECK: dict(color="#9a4fd0", symbol="diamond-open", label="◇ check: pole or shrub?"),
     **{k: v for k, v in STATUS_STYLE.items() if k not in (STATUS_OK, STATUS_WARNING)},
 }
 
@@ -95,7 +97,9 @@ CATEGORY_STYLE = {
 def map_category(df: pd.DataFrame) -> pd.Series:
     method = df["dbh_method"] if "dbh_method" in df else pd.Series("", index=df.index)
     lower = (df.status == STATUS_WARNING) & method.fillna("").str.startswith("visible width")
-    return df.status.where(~lower, LOWER_BOUND)
+    msg = df["message"].fillna("") if "message" in df else pd.Series("", index=df.index)
+    check = (df.status == STATUS_WARNING) & msg.str.contains("bare column|tall for a", regex=True)
+    return df.status.where(~lower, LOWER_BOUND).where(~check, CHECK)
 
 
 class DisplayUnits:

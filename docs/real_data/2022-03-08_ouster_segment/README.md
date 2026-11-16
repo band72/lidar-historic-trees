@@ -31,7 +31,7 @@ The tree table (`trees.csv`) and `trajectory.csv` are in local metres from the s
 
 | File | Content |
 |---|---|
-| `trees.csv` | The `fip inventory` table for the segment with the code of release 0.1.7 (default settings, lengths in feet), including the rejected clusters with their reasons: 11 trees, the rest rejected (mostly posts under roofs) |
+| `trees.csv` | The `fip inventory` table for the segment with the code of release 0.1.7 (default settings, lengths in feet), including the rejected clusters with their reasons: 8 trees, the rest rejected (mostly posts under roofs) |
 | `run.json` | Run record of that run: parameters, summary, output checksums. It reports version "0.1.5" because the development install's version metadata was stale; the code was that of release 0.1.7 |
 | `site_location.json` | Site and route coordinates (WGS84), GNSS quality and the no-RTK note |
 | `trajectory.csv` | Vehicle path from KISS-ICP (time, x, y, z in local metres) |
@@ -61,7 +61,7 @@ fip inventory segment_0-120s.laz -o inventory -e csv -e dxf -e geojson -e points
 | 16.7 GB peak memory | 7.4 GB (merged-tree splitting on 2 cm cells), identical results |
 | Ouster "no return" pixels decoded as (0, 0, 0) | Dropped by the bag reader (they would trace the vehicle path once scans are stitched) |
 | Narrow strips of real stems seen through a fence or between stems fitted 80-130 cm circles (centres 30-40 cm off), or were rejected for a 55° "lean" | Kept, with the visible width as a lower-bound DBH and the position half a width behind the strip (`dbh_method` *visible width (lower bound)*) |
-| 36 accepted objects were posts of the shed, carports and porches: round, hollow, continuous, tall enough | Roof check: at 3 cm, 28-60 % of the material in the layer above a post lies on one plane (trees: 8-12 %). On this segment 53 → 11 trees. A sample of 10 rejections away from the shed: all posts (`roof_posts_rejected.png`); the 15 accepted before the last fix: 7 trees, 8 posts, which fitting the plane to raw elevations instead of terrain-normalised heights then caught |
+| 36 accepted objects were posts of the shed, carports and porches: round, hollow, continuous, tall enough | Roof check: at 3 cm, 28-60 % of the material in the layer above a post lies on one plane (trees: 8-12 %). On this segment 53 → 8 trees. A sample of 10 rejections away from the shed: all posts (`roof_posts_rejected.png`); the 15 accepted before the last fixes: 7 trees, 8 posts; fitting the plane to raw elevations instead of terrain-normalised heights, and a stable plane search, caught most of those posts |
 
 The test fixture `tests/data/ouster_real_2scans.bag` (0.8 MB) is two scans from the same recording, with 8 of the 64 rings kept and the byte layout unchanged, plus its `/tf_static`. It contains no GNSS or other topics.
 

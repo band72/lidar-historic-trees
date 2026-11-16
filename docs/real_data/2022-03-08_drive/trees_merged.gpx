@@ -1,272 +1,263 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" creator="LiDAR Tree Inventory" xmlns="http://www.topografix.com/GPX/1/1">
-  <wpt lat="30.08809132" lon="-83.09600466"><name>T1 68cm</name><desc>DBH 68.4 cm; position +/- 2.08 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08809075" lon="-83.09600523"><name>T1 &gt;=53cm</name><desc>DBH at least 52.9 cm; position +/- 2.08 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08807373" lon="-83.09614760"><name>T2 62cm</name><desc>DBH 62.5 cm; position +/- 2.05 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08804798" lon="-83.09612106"><name>T3 46cm</name><desc>DBH 46.0 cm; position +/- 2.03 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08803489" lon="-83.09601310"><name>T4 31cm</name><desc>DBH 31.3 cm; position +/- 2.02 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08803490" lon="-83.09601301"><name>T4 33cm</name><desc>DBH 32.9 cm; position +/- 2.02 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08802795" lon="-83.09606303"><name>T5 48cm</name><desc>DBH 48.2 cm; position +/- 2.01 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08802338" lon="-83.09628581"><name>T6 73cm</name><desc>DBH 73.4 cm; position +/- 2.02 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08799047" lon="-83.09595885"><name>T7 32cm</name><desc>DBH 32.1 cm; position +/- 1.99 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08795049" lon="-83.09586596"><name>T8 30cm</name><desc>DBH 30.5 cm; position +/- 1.97 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08792679" lon="-83.09609100"><name>T9 27cm</name><desc>DBH 26.9 cm; position +/- 1.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08792681" lon="-83.09609104"><name>T9 26cm</name><desc>DBH 26.3 cm; position +/- 1.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08790286" lon="-83.09608481"><name>T10 27cm</name><desc>DBH 26.7 cm; position +/- 1.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08789122" lon="-83.09584182"><name>T11 51cm</name><desc>DBH 51.1 cm; position +/- 1.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08788869" lon="-83.09597589"><name>T12 24cm</name><desc>DBH 23.5 cm; position +/- 1.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08787971" lon="-83.09626314"><name>T13 9cm</name><desc>DBH 8.7 cm; position +/- 1.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08787730" lon="-83.09598119"><name>T14 25cm</name><desc>DBH 24.8 cm; position +/- 1.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08786718" lon="-83.09596556"><name>T15 27cm</name><desc>DBH 26.9 cm; position +/- 1.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08786719" lon="-83.09596556"><name>T15 27cm</name><desc>DBH 26.9 cm; position +/- 1.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08785965" lon="-83.09622171"><name>T16 40cm</name><desc>DBH 40.2 cm; position +/- 1.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08783314" lon="-83.09571937"><name>T17 41cm</name><desc>DBH 41.0 cm; position +/- 1.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08781418" lon="-83.09632622"><name>T18 60cm</name><desc>DBH 59.7 cm; position +/- 1.85 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08779362" lon="-83.09587543"><name>T19 28cm</name><desc>DBH 27.8 cm; position +/- 1.84 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08778665" lon="-83.09590586"><name>T20 12cm</name><desc>DBH 11.8 cm; position +/- 1.83 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08778664" lon="-83.09590586"><name>T20 12cm</name><desc>DBH 11.8 cm; position +/- 1.83 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08778076" lon="-83.09622554"><name>T21 36cm</name><desc>DBH 36.2 cm; position +/- 1.81 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08777649" lon="-83.09612146"><name>T22 33cm</name><desc>DBH 32.8 cm; position +/- 1.80 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08774189" lon="-83.09611589"><name>T23 24cm</name><desc>DBH 23.7 cm; position +/- 1.78 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08773841" lon="-83.09630184"><name>T24 &gt;=52cm</name><desc>DBH at least 52.0 cm; position +/- 1.79 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08773844" lon="-83.09630184"><name>T24 &gt;=52cm</name><desc>DBH at least 51.9 cm; position +/- 1.79 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08774509" lon="-83.09583179"><name>T25 41cm</name><desc>DBH 41.4 cm; position +/- 1.82 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08773317" lon="-83.09577127"><name>T26 58cm</name><desc>DBH 57.7 cm; position +/- 1.83 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08770911" lon="-83.09581050"><name>T27 32cm</name><desc>DBH 32.4 cm; position +/- 1.80 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08770956" lon="-83.09581117"><name>T27 46cm</name><desc>DBH 46.4 cm; position +/- 1.80 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08770210" lon="-83.09608173"><name>T28 48cm</name><desc>DBH 48.4 cm; position +/- 1.75 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08765456" lon="-83.09621092"><name>T29 38cm</name><desc>DBH 38.4 cm; position +/- 1.73 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08765771" lon="-83.09585111"><name>T30 70cm</name><desc>DBH 69.9 cm; position +/- 1.76 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08764176" lon="-83.09591547"><name>T31 32cm</name><desc>DBH 32.5 cm; position +/- 1.74 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08763293" lon="-83.09626084"><name>T32 45cm</name><desc>DBH 44.7 cm; position +/- 1.72 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08760877" lon="-83.09600252"><name>T33 28cm</name><desc>DBH 28.5 cm; position +/- 1.70 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08743063" lon="-83.09610725"><name>T34 26cm</name><desc>DBH 26.2 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08741206" lon="-83.09622248"><name>T35 74cm</name><desc>DBH 73.8 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08760877" lon="-83.09600253"><name>T33 29cm</name><desc>DBH 28.6 cm; position +/- 1.70 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08743064" lon="-83.09610726"><name>T34 26cm</name><desc>DBH 26.3 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08741207" lon="-83.09622258"><name>T35 74cm</name><desc>DBH 73.7 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08740138" lon="-83.09632941"><name>T36 60cm</name><desc>DBH 60.0 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08740546" lon="-83.09594577"><name>T37 100cm</name><desc>DBH 100.5 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
   <wpt lat="30.08739441" lon="-83.09635463"><name>T38 30cm</name><desc>DBH 30.5 cm; position +/- 1.64 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08736627" lon="-83.09629727"><name>T39 12cm</name><desc>DBH 12.0 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08736627" lon="-83.09629727"><name>T39 12cm</name><desc>DBH 12.1 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08735699" lon="-83.09632047"><name>T40 68cm</name><desc>DBH 68.0 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08735009" lon="-83.09603432"><name>T41 54cm</name><desc>DBH 53.8 cm; position +/- 1.60 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08735010" lon="-83.09603432"><name>T41 54cm</name><desc>DBH 53.8 cm; position +/- 1.60 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08734865" lon="-83.09594736"><name>T42 101cm</name><desc>DBH 100.6 cm; position +/- 1.61 m (1 sd); status warning</desc><sym>Park</sym></wpt>
   <wpt lat="30.08732365" lon="-83.09639990"><name>T43 24cm</name><desc>DBH 23.9 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08732103" lon="-83.09624954"><name>T44 90cm</name><desc>DBH 89.5 cm; position +/- 1.60 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08730817" lon="-83.09639313"><name>T45 30cm</name><desc>DBH 30.5 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08729815" lon="-83.09614915"><name>T46 12cm</name><desc>DBH 12.4 cm; position +/- 1.59 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08729154" lon="-83.09606288"><name>T47 90cm</name><desc>DBH 90.5 cm; position +/- 1.59 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08726151" lon="-83.09638534"><name>T48 12cm</name><desc>DBH 12.1 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08725543" lon="-83.09641568"><name>T49 11cm</name><desc>DBH 10.7 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08723414" lon="-83.09639272"><name>T50 32cm</name><desc>DBH 31.7 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08722501" lon="-83.09642513"><name>T51 38cm</name><desc>DBH 37.5 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08721997" lon="-83.09641639"><name>T52 27cm</name><desc>DBH 27.4 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08721581" lon="-83.09640028"><name>T53 33cm</name><desc>DBH 33.2 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08720440" lon="-83.09638583"><name>T54 10cm</name><desc>DBH 9.8 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08719346" lon="-83.09637998"><name>T55 14cm</name><desc>DBH 14.2 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08717218" lon="-83.09642317"><name>T56 10cm</name><desc>DBH 9.8 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08716046" lon="-83.09637955"><name>T57 12cm</name><desc>DBH 12.5 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08715524" lon="-83.09641951"><name>T58 35cm</name><desc>DBH 34.7 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08715179" lon="-83.09639197"><name>T59 53cm</name><desc>DBH 52.9 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08711435" lon="-83.09639415"><name>T60 56cm</name><desc>DBH 55.6 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08702330" lon="-83.09641925"><name>T61 36cm</name><desc>DBH 36.0 cm; position +/- 1.65 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08697321" lon="-83.09602840"><name>T62 88cm</name><desc>DBH 87.6 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08693486" lon="-83.09600236"><name>T63 86cm</name><desc>DBH 86.3 cm; position +/- 1.64 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08690950" lon="-83.09616641"><name>T64 55cm</name><desc>DBH 55.4 cm; position +/- 1.64 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08690966" lon="-83.09613494"><name>T65 40cm</name><desc>DBH 39.7 cm; position +/- 1.64 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08688946" lon="-83.09632414"><name>T66 42cm</name><desc>DBH 42.1 cm; position +/- 1.67 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08687760" lon="-83.09637932"><name>T67 38cm</name><desc>DBH 37.7 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08686592" lon="-83.09637660"><name>T68 20cm</name><desc>DBH 20.2 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08685904" lon="-83.09498500"><name>T69 &gt;=63cm</name><desc>DBH at least 63.2 cm; position +/- 1.47 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08683443" lon="-83.09636285"><name>T70 &gt;=55cm</name><desc>DBH at least 55.1 cm; position +/- 1.71 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08684041" lon="-83.09597942"><name>T71 48cm</name><desc>DBH 48.4 cm; position +/- 1.69 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08685475" lon="-83.09499220"><name>T72 123cm</name><desc>DBH 123.3 cm; position +/- 1.47 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08683722" lon="-83.09596869"><name>T73 42cm</name><desc>DBH 41.9 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08684071" lon="-83.09474994"><name>T74 74cm</name><desc>DBH 73.9 cm; position +/- 1.53 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08680901" lon="-83.09626393"><name>T75 13cm</name><desc>DBH 13.4 cm; position +/- 1.70 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08680730" lon="-83.09616667"><name>T76 12cm</name><desc>DBH 11.8 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08680583" lon="-83.09576738"><name>T77 84cm</name><desc>DBH 84.1 cm; position +/- 1.76 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08679501" lon="-83.09573545"><name>T78 41cm</name><desc>DBH 40.9 cm; position +/- 1.77 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08679322" lon="-83.09573426"><name>T79 39cm</name><desc>DBH 39.1 cm; position +/- 1.77 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08678478" lon="-83.09620365"><name>T80 11cm</name><desc>DBH 11.4 cm; position +/- 1.71 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08679172" lon="-83.09562993"><name>T81 54cm</name><desc>DBH 54.3 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08678521" lon="-83.09575724"><name>T82 48cm</name><desc>DBH 48.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08679027" lon="-83.09474451"><name>T83 47cm</name><desc>DBH 46.9 cm; position +/- 1.52 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08676022" lon="-83.09624974"><name>T84 53cm</name><desc>DBH 52.8 cm; position +/- 1.39 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08676118" lon="-83.09612990"><name>T85 44cm</name><desc>DBH 44.3 cm; position +/- 1.72 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08675901" lon="-83.09624943"><name>T86 39cm</name><desc>DBH 38.8 cm; position +/- 1.73 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08675856" lon="-83.09616487"><name>T87 49cm</name><desc>DBH 49.2 cm; position +/- 1.72 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08675793" lon="-83.09518731"><name>T88 47cm</name><desc>DBH 46.7 cm; position +/- 1.41 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08673913" lon="-83.09611480"><name>T89 9cm</name><desc>DBH 8.6 cm; position +/- 1.73 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08675473" lon="-83.09476671"><name>T90 62cm</name><desc>DBH 62.3 cm; position +/- 1.51 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08672564" lon="-83.09613564"><name>T91 32cm</name><desc>DBH 32.4 cm; position +/- 1.74 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08672508" lon="-83.09613578"><name>T92 12cm</name><desc>DBH 12.1 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08672287" lon="-83.09583456"><name>T93 45cm</name><desc>DBH 44.7 cm; position +/- 1.78 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08671090" lon="-83.09615440"><name>T94 87cm</name><desc>DBH 87.4 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08670189" lon="-83.09638629"><name>T95 14cm</name><desc>DBH 14.3 cm; position +/- 1.79 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08669974" lon="-83.09638467"><name>T96 &gt;=29cm</name><desc>DBH at least 29.1 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08671660" lon="-83.09517006"><name>T97 36cm</name><desc>DBH 35.5 cm; position +/- 1.41 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08669328" lon="-83.09641363"><name>T98 19cm</name><desc>DBH 18.8 cm; position +/- 1.80 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08669307" lon="-83.09641315"><name>T99 36cm</name><desc>DBH 35.7 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08667914" lon="-83.09620940"><name>T100 81cm</name><desc>DBH 81.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08669133" lon="-83.09518287"><name>T101 28cm</name><desc>DBH 27.6 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08668429" lon="-83.09545126"><name>T102 80cm</name><desc>DBH 80.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08665830" lon="-83.09638998"><name>T103 24cm</name><desc>DBH 23.8 cm; position +/- 1.82 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08665811" lon="-83.09638932"><name>T104 36cm</name><desc>DBH 36.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08665542" lon="-83.09626469"><name>T105 7cm</name><desc>DBH 7.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08667187" lon="-83.09522994"><name>T106 16cm</name><desc>DBH 16.2 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08665116" lon="-83.09503265"><name>T107 69cm</name><desc>DBH 68.6 cm; position +/- 1.43 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08663728" lon="-83.09560725"><name>T108 27cm</name><desc>DBH 27.4 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08662456" lon="-83.09637130"><name>T109 37cm</name><desc>DBH 37.1 cm; position +/- 1.84 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08663557" lon="-83.09560551"><name>T110 40cm</name><desc>DBH 39.7 cm; position +/- 1.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08664281" lon="-83.09499622"><name>T111 43cm</name><desc>DBH 43.3 cm; position +/- 1.43 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08661460" lon="-83.09639237"><name>T112 31cm</name><desc>DBH 31.3 cm; position +/- 1.85 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08662453" lon="-83.09575498"><name>T113 52cm</name><desc>DBH 51.9 cm; position +/- 1.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08661424" lon="-83.09639169"><name>T114 43cm</name><desc>DBH 43.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08660861" lon="-83.09641212"><name>T115 36cm</name><desc>DBH 36.2 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08662518" lon="-83.09537341"><name>T116 41cm</name><desc>DBH 40.6 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08660842" lon="-83.09641160"><name>T117 14cm</name><desc>DBH 13.7 cm; position +/- 1.86 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08662472" lon="-83.09515377"><name>T118 33cm</name><desc>DBH 33.2 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08659254" lon="-83.09641986"><name>T119 35cm</name><desc>DBH 34.8 cm; position +/- 1.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08660418" lon="-83.09551698"><name>T120 32cm</name><desc>DBH 31.8 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08658716" lon="-83.09596182"><name>T121 92cm</name><desc>DBH 91.7 cm; position +/- 1.34 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08657398" lon="-83.09638870"><name>T122 14cm</name><desc>DBH 13.7 cm; position +/- 1.38 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08656064" lon="-83.09639268"><name>T123 33cm</name><desc>DBH 32.9 cm; position +/- 1.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08654680" lon="-83.09641613"><name>T124 15cm</name><desc>DBH 15.2 cm; position +/- 1.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08655766" lon="-83.09526308"><name>T125 30cm</name><desc>DBH 30.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08656074" lon="-83.09493976"><name>T126 20cm</name><desc>DBH 20.0 cm; position +/- 1.43 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08655308" lon="-83.09488834"><name>T127 67cm</name><desc>DBH 67.0 cm; position +/- 1.45 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08654614" lon="-83.09532125"><name>T128 14cm</name><desc>DBH 14.4 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08653226" lon="-83.09566947"><name>T129 39cm</name><desc>DBH 39.0 cm; position +/- 1.33 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08653273" lon="-83.09514867"><name>T130 29cm</name><desc>DBH 29.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08652245" lon="-83.09525847"><name>T131 36cm</name><desc>DBH 36.2 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08649272" lon="-83.09640708"><name>T132 17cm</name><desc>DBH 16.8 cm; position +/- 1.94 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08646539" lon="-83.09614286"><name>T133 67cm</name><desc>DBH 66.7 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08648063" lon="-83.09486504"><name>T134 40cm</name><desc>DBH 40.0 cm; position +/- 1.44 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08644348" lon="-83.09572419"><name>T135 45cm</name><desc>DBH 45.3 cm; position +/- 1.32 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08642624" lon="-83.09630754"><name>T136 112cm</name><desc>DBH 112.4 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08641573" lon="-83.09640453"><name>T137 19cm</name><desc>DBH 19.0 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08641978" lon="-83.09526518"><name>T138 38cm</name><desc>DBH 38.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08641376" lon="-83.09506736"><name>T139 68cm</name><desc>DBH 68.1 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08640815" lon="-83.09511094"><name>T140 14cm</name><desc>DBH 13.8 cm; position +/- 1.38 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08637541" lon="-83.09641367"><name>T141 21cm</name><desc>DBH 21.4 cm; position +/- 2.05 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08637459" lon="-83.09640980"><name>T142 15cm</name><desc>DBH 15.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08638008" lon="-83.09564110"><name>T143 70cm</name><desc>DBH 70.2 cm; position +/- 1.32 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08638928" lon="-83.09494964"><name>T144 41cm</name><desc>DBH 40.8 cm; position +/- 1.42 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08636391" lon="-83.09641063"><name>T145 40cm</name><desc>DBH 40.0 cm; position +/- 2.06 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08637940" lon="-83.09528740"><name>T146 20cm</name><desc>DBH 20.4 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08635944" lon="-83.09627904"><name>T147 15cm</name><desc>DBH 15.1 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08636639" lon="-83.09527993"><name>T148 53cm</name><desc>DBH 53.1 cm; position +/- 1.35 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08635963" lon="-83.09528753"><name>T149 98cm</name><desc>DBH 97.9 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08630709" lon="-83.09627365"><name>T150 35cm</name><desc>DBH 35.2 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08629233" lon="-83.09491572"><name>T151 92cm</name><desc>DBH 92.5 cm; position +/- 1.42 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08625320" lon="-83.09482187"><name>T152 54cm</name><desc>DBH 53.9 cm; position +/- 1.45 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08621473" lon="-83.09647776"><name>T153 20cm</name><desc>DBH 20.5 cm; position +/- 2.22 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08621567" lon="-83.09633691"><name>T154 14cm</name><desc>DBH 13.9 cm; position +/- 2.19 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08605934" lon="-83.09633746"><name>T155 50cm</name><desc>DBH 50.0 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08601698" lon="-83.09542833"><name>T156 39cm</name><desc>DBH 39.3 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08598864" lon="-83.09633954"><name>T157 52cm</name><desc>DBH 51.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08598852" lon="-83.09543318"><name>T158 31cm</name><desc>DBH 30.8 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08598112" lon="-83.09509573"><name>T159 37cm</name><desc>DBH 36.6 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08596761" lon="-83.09532951"><name>T160 29cm</name><desc>DBH 28.7 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08595639" lon="-83.09520575"><name>T161 16cm</name><desc>DBH 15.9 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08591918" lon="-83.09634408"><name>T162 47cm</name><desc>DBH 46.8 cm; position +/- 0.96 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08584983" lon="-83.09634333"><name>T163 37cm</name><desc>DBH 36.6 cm; position +/- 1.38 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08584193" lon="-83.09577417"><name>T164 15cm</name><desc>DBH 15.2 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08583670" lon="-83.09527163"><name>T165 13cm</name><desc>DBH 12.8 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08577628" lon="-83.09618523"><name>T166 12cm</name><desc>DBH 11.7 cm; position +/- 0.95 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08576864" lon="-83.09540747"><name>T167 26cm</name><desc>DBH 25.7 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08573620" lon="-83.09632500"><name>T168 11cm</name><desc>DBH 10.9 cm; position +/- 1.40 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08569959" lon="-83.09629452"><name>T169 13cm</name><desc>DBH 13.3 cm; position +/- 1.40 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08566169" lon="-83.09559145"><name>T170 16cm</name><desc>DBH 15.8 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08564089" lon="-83.09555212"><name>T171 &gt;=33cm</name><desc>DBH at least 32.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08561483" lon="-83.09570132"><name>T172 60cm</name><desc>DBH 60.4 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08562162" lon="-83.09522858"><name>T173 17cm</name><desc>DBH 16.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08560847" lon="-83.09566258"><name>T174 17cm</name><desc>DBH 17.4 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08560208" lon="-83.09570651"><name>T175 36cm</name><desc>DBH 35.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08558371" lon="-83.09565124"><name>T176 18cm</name><desc>DBH 17.6 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08557423" lon="-83.09567941"><name>T177 15cm</name><desc>DBH 14.7 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08551743" lon="-83.09520523"><name>T178 14cm</name><desc>DBH 14.3 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08546184" lon="-83.09570815"><name>T179 &gt;=31cm</name><desc>DBH at least 31.3 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08544008" lon="-83.09608767"><name>T180 31cm</name><desc>DBH 30.7 cm; position +/- 1.44 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08544136" lon="-83.09600699"><name>T181 43cm</name><desc>DBH 42.6 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08543847" lon="-83.09609117"><name>T182 15cm</name><desc>DBH 14.7 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08544051" lon="-83.09594523"><name>T183 53cm</name><desc>DBH 53.0 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08542013" lon="-83.09586237"><name>T184 15cm</name><desc>DBH 15.2 cm; position +/- 0.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08540048" lon="-83.09521691"><name>T185 14cm</name><desc>DBH 13.9 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08538605" lon="-83.09587022"><name>T186 7cm</name><desc>DBH 7.4 cm; position +/- 0.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08534542" lon="-83.09572557"><name>T187 20cm</name><desc>DBH 20.4 cm; position +/- 0.92 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08535023" lon="-83.09509811"><name>T188 15cm</name><desc>DBH 15.3 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08527752" lon="-83.09521393"><name>T189 15cm</name><desc>DBH 14.9 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08527338" lon="-83.09527354"><name>T190 52cm</name><desc>DBH 51.7 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08525903" lon="-83.09568292"><name>T191 19cm</name><desc>DBH 19.4 cm; position +/- 0.92 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08524827" lon="-83.09507621"><name>T192 15cm</name><desc>DBH 14.6 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08519466" lon="-83.09520002"><name>T193 14cm</name><desc>DBH 13.9 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08512430" lon="-83.09570859"><name>T194 22cm</name><desc>DBH 22.5 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08507859" lon="-83.09520214"><name>T195 12cm</name><desc>DBH 12.2 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08504610" lon="-83.09504559"><name>T196 13cm</name><desc>DBH 13.3 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08503519" lon="-83.09568596"><name>T197 &gt;=33cm</name><desc>DBH at least 32.7 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08498049" lon="-83.09593628"><name>T198 9cm</name><desc>DBH 9.4 cm; position +/- 0.91 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08498048" lon="-83.09590791"><name>T199 10cm</name><desc>DBH 9.5 cm; position +/- 0.91 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08496779" lon="-83.09519692"><name>T200 16cm</name><desc>DBH 15.5 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08488577" lon="-83.09567204"><name>T201 23cm</name><desc>DBH 22.9 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08480014" lon="-83.09521437"><name>T202 19cm</name><desc>DBH 19.3 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08468682" lon="-83.09521823"><name>T203 26cm</name><desc>DBH 25.9 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08462405" lon="-83.09573450"><name>T204 42cm</name><desc>DBH 42.3 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08461630" lon="-83.09613732"><name>T205 47cm</name><desc>DBH 46.7 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08458519" lon="-83.09519685"><name>T206 18cm</name><desc>DBH 18.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08450333" lon="-83.09605416"><name>T207 27cm</name><desc>DBH 27.0 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08445232" lon="-83.09521516"><name>T208 21cm</name><desc>DBH 20.7 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08439818" lon="-83.09612579"><name>T209 10cm</name><desc>DBH 9.8 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08439600" lon="-83.09608254"><name>T210 22cm</name><desc>DBH 21.7 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08432349" lon="-83.09592065"><name>T211 22cm</name><desc>DBH 21.6 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08428692" lon="-83.09606736"><name>T212 17cm</name><desc>DBH 16.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08419795" lon="-83.09593982"><name>T213 14cm</name><desc>DBH 14.1 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08418884" lon="-83.09507809"><name>T214 14cm</name><desc>DBH 13.5 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08415434" lon="-83.09606781"><name>T215 16cm</name><desc>DBH 16.3 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08413758" lon="-83.09519617"><name>T216 17cm</name><desc>DBH 16.8 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08411519" lon="-83.09525959"><name>T217 49cm</name><desc>DBH 48.9 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08410156" lon="-83.09588672"><name>T218 22cm</name><desc>DBH 21.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08409602" lon="-83.09506175"><name>T219 68cm</name><desc>DBH 67.5 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08404277" lon="-83.09608580"><name>T220 22cm</name><desc>DBH 21.7 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08402054" lon="-83.09520301"><name>T221 15cm</name><desc>DBH 15.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08397914" lon="-83.09505614"><name>T222 13cm</name><desc>DBH 12.8 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08395988" lon="-83.09591962"><name>T223 21cm</name><desc>DBH 20.7 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08395619" lon="-83.09604302"><name>T224 17cm</name><desc>DBH 16.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08391755" lon="-83.09520720"><name>T225 24cm</name><desc>DBH 23.9 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08386867" lon="-83.09590752"><name>T226 30cm</name><desc>DBH 30.5 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08382976" lon="-83.09606893"><name>T227 22cm</name><desc>DBH 22.4 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08380669" lon="-83.09518706"><name>T228 13cm</name><desc>DBH 12.8 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08373295" lon="-83.09590528"><name>T229 21cm</name><desc>DBH 21.0 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08371433" lon="-83.09606272"><name>T230 22cm</name><desc>DBH 21.8 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08368868" lon="-83.09519601"><name>T231 36cm</name><desc>DBH 35.7 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08362159" lon="-83.09604632"><name>T232 17cm</name><desc>DBH 16.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08361452" lon="-83.09592138"><name>T233 19cm</name><desc>DBH 18.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08356976" lon="-83.09520853"><name>T234 20cm</name><desc>DBH 20.1 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08355030" lon="-83.09580814"><name>T235 65cm</name><desc>DBH 64.6 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08353051" lon="-83.09505024"><name>T236 14cm</name><desc>DBH 13.5 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08352233" lon="-83.09535432"><name>T237 64cm</name><desc>DBH 63.9 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08350916" lon="-83.09590509"><name>T238 19cm</name><desc>DBH 19.1 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08350435" lon="-83.09607046"><name>T239 16cm</name><desc>DBH 15.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08347271" lon="-83.09520930"><name>T240 23cm</name><desc>DBH 22.6 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08341687" lon="-83.09587200"><name>T241 14cm</name><desc>DBH 13.6 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08339551" lon="-83.09604349"><name>T242 15cm</name><desc>DBH 14.9 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08340535" lon="-83.09537265"><name>T243 35cm</name><desc>DBH 35.1 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08332590" lon="-83.09575527"><name>T244 &gt;=68cm</name><desc>DBH at least 67.5 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08325763" lon="-83.09603953"><name>T245 35cm</name><desc>DBH 35.1 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08316789" lon="-83.09532297"><name>T246 39cm</name><desc>DBH 38.9 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08316321" lon="-83.09518652"><name>T247 16cm</name><desc>DBH 15.6 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08315244" lon="-83.09518040"><name>T248 10cm</name><desc>DBH 9.7 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08307897" lon="-83.09486753"><name>T249 12cm</name><desc>DBH 11.8 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08281461" lon="-83.09422070"><name>T250 14cm</name><desc>DBH 13.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08279322" lon="-83.09426654"><name>T251 12cm</name><desc>DBH 12.3 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08278903" lon="-83.09425816"><name>T252 &gt;=24cm</name><desc>DBH at least 24.5 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08278890" lon="-83.09420350"><name>T253 36cm</name><desc>DBH 35.7 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08276854" lon="-83.09455201"><name>T254 21cm</name><desc>DBH 20.6 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08270113" lon="-83.09420639"><name>T255 33cm</name><desc>DBH 32.8 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08248136" lon="-83.09446005"><name>T256 42cm</name><desc>DBH 41.7 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08248245" lon="-83.09435846"><name>T257 39cm</name><desc>DBH 39.0 cm; position +/- 0.98 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08248250" lon="-83.09434127"><name>T258 45cm</name><desc>DBH 44.7 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08248121" lon="-83.09439559"><name>T259 25cm</name><desc>DBH 25.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08232396" lon="-83.09406422"><name>T260 43cm</name><desc>DBH 43.4 cm; position +/- 0.97 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08207737" lon="-83.09438957"><name>T261 35cm</name><desc>DBH 35.0 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08176702" lon="-83.09451240"><name>T262 13cm</name><desc>DBH 12.8 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08168975" lon="-83.09410076"><name>T263 24cm</name><desc>DBH 24.1 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08165676" lon="-83.09427032"><name>T264 28cm</name><desc>DBH 28.2 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08162926" lon="-83.09436518"><name>T265 20cm</name><desc>DBH 20.2 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08162910" lon="-83.09436027"><name>T266 28cm</name><desc>DBH 28.3 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08145285" lon="-83.09454608"><name>T267 12cm</name><desc>DBH 12.0 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08145318" lon="-83.09448280"><name>T268 12cm</name><desc>DBH 11.7 cm; position +/- 0.91 m (1 sd); status ok</desc><sym>Park</sym></wpt>
-  <wpt lat="30.08145207" lon="-83.09450735"><name>T269 12cm</name><desc>DBH 12.0 cm; position +/- 0.91 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08730817" lon="-83.09639313"><name>T44 30cm</name><desc>DBH 30.5 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08729815" lon="-83.09614915"><name>T45 12cm</name><desc>DBH 12.4 cm; position +/- 1.59 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08729154" lon="-83.09606288"><name>T46 90cm</name><desc>DBH 90.5 cm; position +/- 1.59 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08726151" lon="-83.09638534"><name>T47 12cm</name><desc>DBH 12.1 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08725543" lon="-83.09641568"><name>T48 11cm</name><desc>DBH 10.7 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08723414" lon="-83.09639272"><name>T49 32cm</name><desc>DBH 31.7 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08722501" lon="-83.09642513"><name>T50 38cm</name><desc>DBH 37.5 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08721997" lon="-83.09641639"><name>T51 27cm</name><desc>DBH 27.4 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08721581" lon="-83.09640028"><name>T52 33cm</name><desc>DBH 33.2 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08720440" lon="-83.09638583"><name>T53 10cm</name><desc>DBH 9.8 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08719346" lon="-83.09637998"><name>T54 14cm</name><desc>DBH 14.2 cm; position +/- 1.62 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08717218" lon="-83.09642317"><name>T55 10cm</name><desc>DBH 9.8 cm; position +/- 1.63 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08716046" lon="-83.09637955"><name>T56 13cm</name><desc>DBH 12.6 cm; position +/- 1.62 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08715524" lon="-83.09641951"><name>T57 35cm</name><desc>DBH 34.7 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08711435" lon="-83.09639415"><name>T58 56cm</name><desc>DBH 55.6 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08702330" lon="-83.09641925"><name>T59 36cm</name><desc>DBH 36.0 cm; position +/- 1.65 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08697321" lon="-83.09602840"><name>T60 88cm</name><desc>DBH 87.6 cm; position +/- 1.63 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08693486" lon="-83.09600236"><name>T61 86cm</name><desc>DBH 86.3 cm; position +/- 1.64 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08690950" lon="-83.09616641"><name>T62 55cm</name><desc>DBH 55.4 cm; position +/- 1.64 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08690966" lon="-83.09613494"><name>T63 40cm</name><desc>DBH 39.7 cm; position +/- 1.64 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08687760" lon="-83.09637932"><name>T64 38cm</name><desc>DBH 37.7 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08686592" lon="-83.09637659"><name>T65 20cm</name><desc>DBH 20.2 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08685904" lon="-83.09498500"><name>T66 &gt;=63cm</name><desc>DBH at least 63.2 cm; position +/- 1.47 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08683445" lon="-83.09636295"><name>T67 &gt;=55cm</name><desc>DBH at least 54.6 cm; position +/- 1.71 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08684041" lon="-83.09597942"><name>T68 48cm</name><desc>DBH 48.4 cm; position +/- 1.69 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08685475" lon="-83.09499220"><name>T69 123cm</name><desc>DBH 123.3 cm; position +/- 1.47 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08683722" lon="-83.09596869"><name>T70 42cm</name><desc>DBH 42.0 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08684071" lon="-83.09474994"><name>T71 74cm</name><desc>DBH 73.9 cm; position +/- 1.53 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08680901" lon="-83.09626393"><name>T72 13cm</name><desc>DBH 13.4 cm; position +/- 1.70 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08680730" lon="-83.09616667"><name>T73 12cm</name><desc>DBH 11.8 cm; position +/- 1.69 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08680583" lon="-83.09576738"><name>T74 84cm</name><desc>DBH 84.1 cm; position +/- 1.76 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08679501" lon="-83.09573545"><name>T75 41cm</name><desc>DBH 41.1 cm; position +/- 1.77 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08679322" lon="-83.09573426"><name>T76 39cm</name><desc>DBH 39.1 cm; position +/- 1.77 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08678478" lon="-83.09620364"><name>T77 11cm</name><desc>DBH 11.4 cm; position +/- 1.71 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08679172" lon="-83.09562993"><name>T78 54cm</name><desc>DBH 54.3 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08678521" lon="-83.09575724"><name>T79 48cm</name><desc>DBH 48.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08679028" lon="-83.09474451"><name>T80 47cm</name><desc>DBH 46.9 cm; position +/- 1.52 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08676022" lon="-83.09624974"><name>T81 53cm</name><desc>DBH 52.8 cm; position +/- 1.39 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08676118" lon="-83.09612990"><name>T82 44cm</name><desc>DBH 44.3 cm; position +/- 1.72 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08675901" lon="-83.09624943"><name>T83 39cm</name><desc>DBH 38.8 cm; position +/- 1.73 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08675856" lon="-83.09616487"><name>T84 49cm</name><desc>DBH 49.2 cm; position +/- 1.72 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08675801" lon="-83.09518735"><name>T85 48cm</name><desc>DBH 47.6 cm; position +/- 1.41 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08673913" lon="-83.09611480"><name>T86 9cm</name><desc>DBH 8.6 cm; position +/- 1.73 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08675474" lon="-83.09476671"><name>T87 62cm</name><desc>DBH 62.4 cm; position +/- 1.51 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08672563" lon="-83.09613564"><name>T88 32cm</name><desc>DBH 32.3 cm; position +/- 1.74 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08672508" lon="-83.09613578"><name>T89 12cm</name><desc>DBH 12.1 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08672287" lon="-83.09583456"><name>T90 45cm</name><desc>DBH 44.7 cm; position +/- 1.78 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08671090" lon="-83.09615440"><name>T91 87cm</name><desc>DBH 87.4 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08670190" lon="-83.09638629"><name>T92 14cm</name><desc>DBH 14.3 cm; position +/- 1.79 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08669974" lon="-83.09638467"><name>T93 &gt;=29cm</name><desc>DBH at least 29.1 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08671660" lon="-83.09517006"><name>T94 36cm</name><desc>DBH 35.5 cm; position +/- 1.41 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08669328" lon="-83.09641363"><name>T95 19cm</name><desc>DBH 18.8 cm; position +/- 1.80 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08669307" lon="-83.09641315"><name>T96 36cm</name><desc>DBH 35.7 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08667914" lon="-83.09620940"><name>T97 81cm</name><desc>DBH 81.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08669133" lon="-83.09518287"><name>T98 28cm</name><desc>DBH 27.6 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08668429" lon="-83.09545126"><name>T99 80cm</name><desc>DBH 80.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08665830" lon="-83.09638998"><name>T100 24cm</name><desc>DBH 23.8 cm; position +/- 1.82 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08665811" lon="-83.09638932"><name>T101 36cm</name><desc>DBH 36.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08665542" lon="-83.09626469"><name>T102 7cm</name><desc>DBH 7.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08667187" lon="-83.09522994"><name>T103 16cm</name><desc>DBH 16.2 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08665116" lon="-83.09503265"><name>T104 69cm</name><desc>DBH 68.6 cm; position +/- 1.43 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08663728" lon="-83.09560725"><name>T105 27cm</name><desc>DBH 27.4 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08662456" lon="-83.09637130"><name>T106 37cm</name><desc>DBH 37.1 cm; position +/- 1.84 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08663557" lon="-83.09560551"><name>T107 40cm</name><desc>DBH 39.7 cm; position +/- 1.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08664281" lon="-83.09499622"><name>T108 43cm</name><desc>DBH 43.3 cm; position +/- 1.43 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08661460" lon="-83.09639237"><name>T109 31cm</name><desc>DBH 31.3 cm; position +/- 1.85 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08662453" lon="-83.09575498"><name>T110 52cm</name><desc>DBH 51.9 cm; position +/- 1.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08661424" lon="-83.09639169"><name>T111 43cm</name><desc>DBH 43.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08660861" lon="-83.09641212"><name>T112 36cm</name><desc>DBH 36.2 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08662518" lon="-83.09537341"><name>T113 41cm</name><desc>DBH 40.6 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08660842" lon="-83.09641160"><name>T114 14cm</name><desc>DBH 13.7 cm; position +/- 1.86 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08662471" lon="-83.09515377"><name>T115 33cm</name><desc>DBH 33.3 cm; position +/- 1.40 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08659254" lon="-83.09641986"><name>T116 35cm</name><desc>DBH 34.8 cm; position +/- 1.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08660421" lon="-83.09551699"><name>T117 32cm</name><desc>DBH 32.3 cm; position +/- 1.35 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08658716" lon="-83.09596182"><name>T118 92cm</name><desc>DBH 91.7 cm; position +/- 1.34 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08657398" lon="-83.09638870"><name>T119 14cm</name><desc>DBH 13.7 cm; position +/- 1.38 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08656064" lon="-83.09639268"><name>T120 33cm</name><desc>DBH 32.9 cm; position +/- 1.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08654680" lon="-83.09641613"><name>T121 14cm</name><desc>DBH 14.0 cm; position +/- 1.38 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08655766" lon="-83.09526308"><name>T122 30cm</name><desc>DBH 30.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08656074" lon="-83.09493976"><name>T123 20cm</name><desc>DBH 20.0 cm; position +/- 1.43 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08655308" lon="-83.09488834"><name>T124 67cm</name><desc>DBH 67.0 cm; position +/- 1.45 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08654614" lon="-83.09532125"><name>T125 14cm</name><desc>DBH 14.4 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08653226" lon="-83.09566947"><name>T126 39cm</name><desc>DBH 39.0 cm; position +/- 1.33 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08653273" lon="-83.09514867"><name>T127 29cm</name><desc>DBH 29.0 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08652245" lon="-83.09525847"><name>T128 36cm</name><desc>DBH 36.2 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08649272" lon="-83.09640708"><name>T129 17cm</name><desc>DBH 16.8 cm; position +/- 1.94 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08646539" lon="-83.09614286"><name>T130 67cm</name><desc>DBH 66.7 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08648063" lon="-83.09486504"><name>T131 40cm</name><desc>DBH 40.0 cm; position +/- 1.44 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08644348" lon="-83.09572419"><name>T132 45cm</name><desc>DBH 45.3 cm; position +/- 1.32 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08642624" lon="-83.09630754"><name>T133 112cm</name><desc>DBH 112.4 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08641573" lon="-83.09640453"><name>T134 19cm</name><desc>DBH 19.0 cm; position +/- 1.37 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08641978" lon="-83.09526518"><name>T135 38cm</name><desc>DBH 38.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08641375" lon="-83.09506739"><name>T136 69cm</name><desc>DBH 68.7 cm; position +/- 1.39 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08640815" lon="-83.09511094"><name>T137 14cm</name><desc>DBH 13.8 cm; position +/- 1.38 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08637541" lon="-83.09641367"><name>T138 22cm</name><desc>DBH 21.5 cm; position +/- 2.05 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08637459" lon="-83.09640980"><name>T139 15cm</name><desc>DBH 15.1 cm; position +/- 1.37 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08638008" lon="-83.09564110"><name>T140 70cm</name><desc>DBH 70.2 cm; position +/- 1.32 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08638928" lon="-83.09494964"><name>T141 41cm</name><desc>DBH 40.8 cm; position +/- 1.42 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08636391" lon="-83.09641063"><name>T142 40cm</name><desc>DBH 40.0 cm; position +/- 2.06 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08635945" lon="-83.09627904"><name>T143 15cm</name><desc>DBH 15.1 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08636639" lon="-83.09527993"><name>T144 53cm</name><desc>DBH 53.1 cm; position +/- 1.35 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08635963" lon="-83.09528753"><name>T145 98cm</name><desc>DBH 97.9 cm; position +/- 1.35 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08630709" lon="-83.09627365"><name>T146 35cm</name><desc>DBH 35.2 cm; position +/- 1.34 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08629233" lon="-83.09491572"><name>T147 92cm</name><desc>DBH 92.5 cm; position +/- 1.42 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08625320" lon="-83.09482187"><name>T148 54cm</name><desc>DBH 53.9 cm; position +/- 1.45 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08621473" lon="-83.09647776"><name>T149 24cm</name><desc>DBH 24.4 cm; position +/- 1.38 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08621567" lon="-83.09633691"><name>T150 14cm</name><desc>DBH 13.9 cm; position +/- 2.19 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08605933" lon="-83.09633743"><name>T151 50cm</name><desc>DBH 50.0 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08601698" lon="-83.09542833"><name>T152 39cm</name><desc>DBH 39.3 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08598864" lon="-83.09633954"><name>T153 52cm</name><desc>DBH 51.5 cm; position +/- 1.36 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08598852" lon="-83.09543318"><name>T154 31cm</name><desc>DBH 30.8 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08598112" lon="-83.09509573"><name>T155 37cm</name><desc>DBH 36.6 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08596761" lon="-83.09532951"><name>T156 29cm</name><desc>DBH 28.7 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08595639" lon="-83.09520575"><name>T157 16cm</name><desc>DBH 15.9 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08591918" lon="-83.09634408"><name>T158 47cm</name><desc>DBH 46.8 cm; position +/- 0.96 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08584983" lon="-83.09634333"><name>T159 37cm</name><desc>DBH 36.6 cm; position +/- 1.38 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08584204" lon="-83.09577410"><name>T160 15cm</name><desc>DBH 14.9 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08583671" lon="-83.09527163"><name>T161 13cm</name><desc>DBH 12.8 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08577628" lon="-83.09618523"><name>T162 12cm</name><desc>DBH 11.7 cm; position +/- 0.95 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08576864" lon="-83.09540746"><name>T163 26cm</name><desc>DBH 25.7 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08573620" lon="-83.09632500"><name>T164 11cm</name><desc>DBH 10.9 cm; position +/- 1.40 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08569959" lon="-83.09629452"><name>T165 13cm</name><desc>DBH 12.8 cm; position +/- 0.94 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08566169" lon="-83.09559145"><name>T166 16cm</name><desc>DBH 15.8 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08564089" lon="-83.09555212"><name>T167 &gt;=33cm</name><desc>DBH at least 32.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08561483" lon="-83.09570132"><name>T168 60cm</name><desc>DBH 60.4 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08562162" lon="-83.09522858"><name>T169 17cm</name><desc>DBH 16.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08560847" lon="-83.09566258"><name>T170 17cm</name><desc>DBH 17.4 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08560208" lon="-83.09570651"><name>T171 36cm</name><desc>DBH 35.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08559904" lon="-83.09569069"><name>T172 17cm</name><desc>DBH 17.3 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08558371" lon="-83.09565124"><name>T173 18cm</name><desc>DBH 17.6 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08557424" lon="-83.09567941"><name>T174 15cm</name><desc>DBH 14.8 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08551743" lon="-83.09520523"><name>T175 14cm</name><desc>DBH 14.3 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08546184" lon="-83.09570815"><name>T176 &gt;=31cm</name><desc>DBH at least 31.3 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08544008" lon="-83.09608767"><name>T177 31cm</name><desc>DBH 30.7 cm; position +/- 1.44 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08544136" lon="-83.09600699"><name>T178 43cm</name><desc>DBH 42.6 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08543847" lon="-83.09609117"><name>T179 15cm</name><desc>DBH 14.7 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08544051" lon="-83.09594523"><name>T180 53cm</name><desc>DBH 53.0 cm; position +/- 0.93 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08542013" lon="-83.09586237"><name>T181 15cm</name><desc>DBH 15.2 cm; position +/- 0.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08540048" lon="-83.09521691"><name>T182 14cm</name><desc>DBH 13.9 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08538590" lon="-83.09587026"><name>T183 7cm</name><desc>DBH 7.0 cm; position +/- 0.92 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08534542" lon="-83.09572557"><name>T184 20cm</name><desc>DBH 20.4 cm; position +/- 0.92 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08535023" lon="-83.09509811"><name>T185 15cm</name><desc>DBH 15.3 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08527752" lon="-83.09521393"><name>T186 15cm</name><desc>DBH 14.9 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08527338" lon="-83.09527354"><name>T187 52cm</name><desc>DBH 51.7 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08525903" lon="-83.09568292"><name>T188 19cm</name><desc>DBH 19.4 cm; position +/- 0.92 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08524827" lon="-83.09507621"><name>T189 15cm</name><desc>DBH 14.6 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08519466" lon="-83.09520002"><name>T190 14cm</name><desc>DBH 13.9 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08512430" lon="-83.09570859"><name>T191 22cm</name><desc>DBH 22.5 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08507859" lon="-83.09520215"><name>T192 12cm</name><desc>DBH 12.2 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08504610" lon="-83.09504559"><name>T193 13cm</name><desc>DBH 13.3 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08503518" lon="-83.09568596"><name>T194 &gt;=33cm</name><desc>DBH at least 32.7 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08496779" lon="-83.09519692"><name>T195 16cm</name><desc>DBH 15.5 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08488577" lon="-83.09567204"><name>T196 23cm</name><desc>DBH 22.9 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08480014" lon="-83.09521437"><name>T197 19cm</name><desc>DBH 19.3 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08468682" lon="-83.09521823"><name>T198 26cm</name><desc>DBH 25.9 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08462405" lon="-83.09573450"><name>T199 42cm</name><desc>DBH 42.3 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08461630" lon="-83.09613732"><name>T200 47cm</name><desc>DBH 46.7 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08458519" lon="-83.09519685"><name>T201 18cm</name><desc>DBH 18.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08450333" lon="-83.09605416"><name>T202 27cm</name><desc>DBH 27.0 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08445232" lon="-83.09521516"><name>T203 21cm</name><desc>DBH 20.7 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08439818" lon="-83.09612579"><name>T204 10cm</name><desc>DBH 9.8 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08439600" lon="-83.09608254"><name>T205 22cm</name><desc>DBH 21.7 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08432349" lon="-83.09592065"><name>T206 22cm</name><desc>DBH 21.6 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08428692" lon="-83.09606736"><name>T207 17cm</name><desc>DBH 16.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08419795" lon="-83.09593982"><name>T208 14cm</name><desc>DBH 14.1 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08418884" lon="-83.09507809"><name>T209 14cm</name><desc>DBH 13.5 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08415434" lon="-83.09606781"><name>T210 16cm</name><desc>DBH 16.3 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08413758" lon="-83.09519617"><name>T211 17cm</name><desc>DBH 16.8 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08411519" lon="-83.09525959"><name>T212 49cm</name><desc>DBH 48.9 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08410156" lon="-83.09588672"><name>T213 22cm</name><desc>DBH 21.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08404277" lon="-83.09608580"><name>T214 22cm</name><desc>DBH 21.7 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08402054" lon="-83.09520301"><name>T215 15cm</name><desc>DBH 15.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08397914" lon="-83.09505614"><name>T216 13cm</name><desc>DBH 12.8 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08395988" lon="-83.09591962"><name>T217 21cm</name><desc>DBH 20.7 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08395619" lon="-83.09604302"><name>T218 17cm</name><desc>DBH 16.6 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08391755" lon="-83.09520720"><name>T219 24cm</name><desc>DBH 23.9 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08386867" lon="-83.09590752"><name>T220 30cm</name><desc>DBH 30.5 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08382976" lon="-83.09606893"><name>T221 22cm</name><desc>DBH 22.4 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08380669" lon="-83.09518706"><name>T222 13cm</name><desc>DBH 12.8 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08373295" lon="-83.09590528"><name>T223 21cm</name><desc>DBH 21.0 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08371433" lon="-83.09606272"><name>T224 22cm</name><desc>DBH 21.8 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08368868" lon="-83.09519601"><name>T225 36cm</name><desc>DBH 35.7 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08362159" lon="-83.09604632"><name>T226 17cm</name><desc>DBH 16.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08361452" lon="-83.09592138"><name>T227 19cm</name><desc>DBH 18.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08356976" lon="-83.09520853"><name>T228 20cm</name><desc>DBH 20.1 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08355030" lon="-83.09580814"><name>T229 65cm</name><desc>DBH 64.6 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08353051" lon="-83.09505024"><name>T230 14cm</name><desc>DBH 13.5 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08352233" lon="-83.09535432"><name>T231 64cm</name><desc>DBH 63.9 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08350916" lon="-83.09590509"><name>T232 19cm</name><desc>DBH 19.1 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08350435" lon="-83.09607046"><name>T233 16cm</name><desc>DBH 15.7 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08347276" lon="-83.09520935"><name>T234 21cm</name><desc>DBH 21.4 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08341687" lon="-83.09587200"><name>T235 14cm</name><desc>DBH 13.6 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08339551" lon="-83.09604349"><name>T236 15cm</name><desc>DBH 14.9 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08340535" lon="-83.09537265"><name>T237 35cm</name><desc>DBH 35.1 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08332606" lon="-83.09575500"><name>T238 &gt;=68cm</name><desc>DBH at least 67.6 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08325763" lon="-83.09603953"><name>T239 35cm</name><desc>DBH 35.1 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08316789" lon="-83.09532297"><name>T240 39cm</name><desc>DBH 38.9 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08316321" lon="-83.09518652"><name>T241 16cm</name><desc>DBH 15.6 cm; position +/- 0.91 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08315244" lon="-83.09518040"><name>T242 10cm</name><desc>DBH 9.7 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08307897" lon="-83.09486753"><name>T243 12cm</name><desc>DBH 11.8 cm; position +/- 0.88 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08281461" lon="-83.09422070"><name>T244 14cm</name><desc>DBH 13.9 cm; position +/- 0.89 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08279322" lon="-83.09426654"><name>T245 12cm</name><desc>DBH 12.3 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08278903" lon="-83.09425816"><name>T246 &gt;=24cm</name><desc>DBH at least 24.5 cm; position +/- 0.89 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08278890" lon="-83.09420350"><name>T247 36cm</name><desc>DBH 35.7 cm; position +/- 0.88 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08277485" lon="-83.09456056"><name>T248 21cm</name><desc>DBH 20.6 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08270113" lon="-83.09420639"><name>T249 33cm</name><desc>DBH 32.8 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08248136" lon="-83.09446005"><name>T250 42cm</name><desc>DBH 41.7 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08248245" lon="-83.09435846"><name>T251 39cm</name><desc>DBH 39.0 cm; position +/- 0.98 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08248250" lon="-83.09434127"><name>T252 45cm</name><desc>DBH 44.7 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08248121" lon="-83.09439559"><name>T253 25cm</name><desc>DBH 25.4 cm; position +/- 0.87 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08232396" lon="-83.09406422"><name>T254 43cm</name><desc>DBH 43.4 cm; position +/- 0.97 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08207737" lon="-83.09438957"><name>T255 35cm</name><desc>DBH 35.0 cm; position +/- 0.87 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08168975" lon="-83.09410076"><name>T256 24cm</name><desc>DBH 24.1 cm; position +/- 0.90 m (1 sd); status ok</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08165676" lon="-83.09427032"><name>T257 28cm</name><desc>DBH 28.2 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08162926" lon="-83.09436518"><name>T258 20cm</name><desc>DBH 20.2 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08162910" lon="-83.09436027"><name>T259 28cm</name><desc>DBH 28.3 cm; position +/- 0.90 m (1 sd); status warning</desc><sym>Park</sym></wpt>
+  <wpt lat="30.08145207" lon="-83.09450735"><name>T260 12cm</name><desc>DBH 12.0 cm; position +/- 0.91 m (1 sd); status ok</desc><sym>Park</sym></wpt>
 </gpx>

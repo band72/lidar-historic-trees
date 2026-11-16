@@ -21,6 +21,8 @@ VOXEL = 0.05
 RADIUS = 1.5
 #: roofs are looked for below this height (m); crowns higher up only dilute the plane search
 ROOF_TOP = 8.0
+#: plane hypotheses per stem; enough that a borderline post settles on its best plane
+ROOF_TRIES = 800
 
 
 @dataclass(frozen=True)
@@ -80,7 +82,9 @@ class OverheadIndex:
         """
         if self.tree is None:
             return None
-        idx = self.tree.query_ball_point([x, y], RADIUS)
+        # sorted: the result must not depend on the k-d tree's internal order (it did, and
+        # borderline posts flipped when the index changed)
+        idx = np.sort(np.asarray(self.tree.query_ball_point([x, y], RADIUS), dtype=np.int64))
         h = self.points[idx]
         d = np.hypot(h[:, 0] - x, h[:, 1] - y)
         sel = (h[:, 2] > base) & (h[:, 2] < ROOF_TOP) & (d > radius + 0.10)
@@ -90,7 +94,7 @@ class OverheadIndex:
             return None
         rng = np.random.default_rng(seed)
         best, best_n, best_count = None, None, -1
-        for _ in range(300):
+        for _ in range(ROOF_TRIES):
             s = q[rng.choice(len(q), 3, replace=False)]
             n = np.cross(s[1] - s[0], s[2] - s[0])
             norm = np.linalg.norm(n)
@@ -129,3 +133,25 @@ class OverheadIndex:
         if len(idx) < 20:
             return float("nan")
         return float(np.percentile(self.points[idx, 2], 99))
+
+    def column_profile(self, x: float, y: float, radius: float) -> tuple[float, float]:
+        """
+        (top, crown_share) of what is above 2.5 m within 3 m of a stem: the column's top
+        (99th percentile of points within radius + 0.3 m of the axis) and the share of the
+        material that lies away from the column (more than radius + 0.5 m out). A tree shows
+        a crown (0.7-0.9 on the 2022-03-08 drive); a pole, a dead snag, or a tall trunk whose
+        crown is above the scanner's view, a bare column (0.05). NaN when nothing is seen.
+        """
+        nan = float("nan")
+        if self.tree is None:
+            return nan, nan
+        idx = self.tree.query_ball_point([x, y], 3.0)
+        q = self.points[idx]
+        q = q[q[:, 2] > 2.5]
+        if len(q) < 20:
+            return nan, nan
+        d = np.hypot(q[:, 0] - x, q[:, 1] - y)
+        r = max(radius, 0.05)
+        col, crown = d < r + 0.3, d >= r + 0.5
+        top = float(np.percentile(q[col, 2], 99)) if col.sum() >= 20 else nan
+        return top, float(crown.sum() / max(1, crown.sum() + col.sum()))

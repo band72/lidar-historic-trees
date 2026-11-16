@@ -90,3 +90,27 @@ def test_trees_are_not_under_a_roof(name):
     r = _roof(name)
     assert r is None or not r.is_roof(FP.roof_layer_fraction, FP.roof_min_span), r
     assert r is None or r.layer_fraction < FP.roof_layer_fraction / 1.5  # with margin
+
+
+def test_column_flags_values_from_the_drive():
+    """Values measured on the 2022-03-08 drive (segment 480-600 s, reviewed in side views)."""
+    from forest_inventory_pipeline.inventory import column_flag
+
+    assert "pole" in column_flag(6.7, 0.05, 0.65)  # a pole: bare column to 6.7 m
+    assert "shrub" in column_flag(2.6, 0.0, 0.57)  # a dense blob, 2.6 m tall
+    assert "shrub" in column_flag(2.7, 0.03, 0.47)  # small tree, crown cut at breast height
+    for top, share, dbh in [(5.7, 0.77, 0.47), (7.7, 0.76, 0.14), (4.4, 0.86, 0.53),
+                            (3.8, 0.74, 0.12), (7.4, 0.25, 0.13), (3.3, 0.07, 0.12)]:
+        assert column_flag(top, share, dbh) == "", (top, share, dbh)  # trees; small post
+    assert column_flag(float("nan"), 0.0, 0.5) == ""
+
+
+def test_column_profile_of_a_pole_and_a_tree():
+    rng = np.random.default_rng(0)
+    pole = np.c_[rng.normal(0, 0.05, 3000), rng.normal(0, 0.05, 3000), rng.uniform(0, 7, 3000)]
+    ix = OverheadIndex(pole)
+    top, share = ix.column_profile(0.0, 0.0, 0.1)
+    assert top == pytest.approx(7.0, abs=0.3) and share < 0.05
+    crown = np.c_[rng.uniform(-2.5, 2.5, (6000, 2)), rng.uniform(3, 7, 6000)]
+    top, share = OverheadIndex(np.vstack([pole, crown])).column_profile(0.0, 0.0, 0.1)
+    assert share > 0.7
