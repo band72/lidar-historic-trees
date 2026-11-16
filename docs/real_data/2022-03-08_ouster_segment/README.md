@@ -32,7 +32,7 @@ The tree table (`trees.csv`) and `trajectory.csv` are in local metres from the s
 | File | Content |
 |---|---|
 | `trees.csv` | The `fip inventory` table for the segment with version 0.1.6 (default settings, lengths in feet), including the rejected clusters with their reasons: 11 trees, the rest rejected (mostly posts under roofs) |
-| `run.json` | Run record of that run: parameters, summary, output checksums |
+| `run.json` | Run record of that run: parameters, summary, output checksums. It reports version "0.1.5" because the development install's version metadata was stale; the code was that of the 0.1.6 release |
 | `site_location.json` | Site and route coordinates (WGS84), GNSS quality and the no-RTK note |
 | `trajectory.csv` | Vehicle path from KISS-ICP (time, x, y, z in local metres) |
 | `before_trunk_check_*.png` | The same segment before the trunk check: 227 clusters were measured, most of them shrubs, posts, walls and scatter |
