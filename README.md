@@ -524,7 +524,7 @@ The `rosbag` reader collects `sensor_msgs/PointCloud2` messages from one topic. 
 |---|---|
 | A registered/mapped cloud topic (e.g. `/cloud_registered` from FAST-LIO, a `/map` topic) | `-R topic=/cloud_registered` |
 | Raw scans in the sensor frame, **plus** `/tf` from SLAM/odometry | `-R topic=/os_cloud_node/points -R target_frame=map`. Each scan is transformed with the pose at its timestamp |
-| Raw scans with no poses (or only GNSS/INS, which is usually too coarse for DBH) | Register them with lidar odometry first. The included script does this with KISS-ICP: `pip install kiss-icp`, then `python scripts/register_rosbag_kiss_icp.py run.bag --topic /os_cloud_node/points --start 0 --duration 120 -o segment.laz`, then `fip inventory segment.laz`. It removes motion blur using per-point times, drops no-return pixels and levels the cloud with the lidar's IMU. Coordinates are local (origin at the first scan); keep segments to a few minutes, since odometry drifts slowly. Stacking raw scans without poses smears the trees, so the reader refuses with an explanation |
+| Raw scans with no poses (or only GNSS/INS, which is usually too coarse for DBH) | Register them with lidar odometry first. The included script does this with KISS-ICP: `pip install kiss-icp`, then `python scripts/register_rosbag_kiss_icp.py run.bag --topic /os_cloud_node/points --start 0 --duration 120 -o segment.laz`, then `fip inventory segment.laz` (step by step below). It removes motion blur using per-point times, drops no-return pixels and levels the cloud with the lidar's IMU. Coordinates are local (origin at the first scan); keep segments to a few minutes, since odometry drifts slowly. Stacking raw scans without poses smears the trees, so the reader refuses with an explanation |
 | A static scanner | `-R allow_sensor_frame=true` |
 
 Other rosbag options:
@@ -538,6 +538,96 @@ Other rosbag options:
 | `tf_tolerance` | Seconds a scan may lie outside the `/tf` time range |
 
 If the bag has a single PointCloud2 topic, the reader uses it automatically. Otherwise the error message lists the topics available.
+
+<details>
+<summary><b>Step by step on Ubuntu: install from source, stitch a ROS bag with KISS-ICP, and measure it</b></summary>
+
+<br>
+
+The KISS-ICP script ships with the source code, not with the Windows/Linux installers, so this uses a Python install from GitHub. Tested on Ubuntu 24.04 with Python 3.12; Ubuntu 22.04 (Python 3.10) works the same way.
+
+**1. System packages**
+
+```bash
+sudo apt update
+sudo apt install git python3-venv python3-dev build-essential libegl1 libgl1 libgomp1
+```
+
+**2. Download the code**
+
+```bash
+git clone https://github.com/band72/lidar-historic-trees.git
+cd lidar-historic-trees
+```
+
+**3. Install into a Python environment**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip cmake                    # Ubuntu 22.04's own CMake (3.22) is too old
+pip install -e ".[app,las]" rosbags kiss-icp      # builds the C++ clustering extension; a few minutes
+fip self-test                                      # should end with "self-test passed"
+```
+
+`app` adds the web app and DXF export, `las` LAS/LAZ files, `rosbags` ROS1/ROS2 bags (no ROS installation needed), `kiss-icp` the lidar odometry. In every new terminal, run `source .venv/bin/activate` in this folder first.
+
+**4. Look inside the bag**
+
+You need the name of the lidar's `sensor_msgs/PointCloud2` topic, and of its IMU topic if it has one (used to level the cloud):
+
+```bash
+python -c "
+import sys; from pathlib import Path; from rosbags.highlevel import AnyReader
+with AnyReader([Path(sys.argv[1])]) as r:
+    print(f'{(r.end_time - r.start_time) / 1e9:.0f} s')
+    for c in r.connections: print(c.topic, c.msgtype, c.msgcount)
+" drive.bag
+```
+
+For an Ouster, these are usually `/os_cloud_node/points` and `/os_cloud_node/imu`.
+
+**5. Stitch a segment into one point cloud**
+
+```bash
+python scripts/register_rosbag_kiss_icp.py drive.bag \
+    --topic /os_cloud_node/points --imu-topic /os_cloud_node/imu \
+    --start 0 --duration 120 -o out/segment_0-120s.laz
+```
+
+It writes `out/segment_0-120s.laz` and `out/segment_0-120s_trajectory.csv` (the scanner's path, for georeferencing). On the test drive (Ouster 64 at 10 Hz, from a vehicle), 10 s of bag took 11 s; a 120 s segment holds about 45 M points (135 MB).
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--topic` | `/os_cloud_node/points` | The lidar's PointCloud2 topic |
+| `--imu-topic` | `/os_cloud_node/imu` | IMU in (or aligned with) the lidar frame, to level the cloud (z up) |
+| `--start`, `--duration` | `0`, `120` | Seconds from the start of the bag, and how many to process |
+| `--min-range` | `1.5` | Drop returns closer than this (m): the vehicle, the operator |
+| `--max-range` | `80` | Returns used for the odometry (m) |
+| `--keep-range` | `25` | Returns kept in the output cloud (m) |
+| `--voxel` | `0.01` | De-duplication grid of the output (m) |
+
+KISS-ICP drifts slowly over long runs, so keep segments to a few minutes. For a long drive, process consecutive segments (`--start 0`, `120`, `240`, ...), then measure each and merge them (step 7).
+
+**6. Find and measure the trees**
+
+```bash
+fip inventory out/segment_0-120s.laz -o out/inventory_0-120s \
+    --profile "Roadside / Farmstead" -e csv -e dxf -e geojson
+```
+
+Or open the web app with `fip app`, choose the LAZ file, and run it from there.
+
+**7. Optional: latitude/longitude and one map for the whole drive**
+
+If the bag also recorded GNSS (`sensor_msgs/NavSatFix`), georeference each segment with its trajectory, then merge the segments:
+
+```bash
+fip georeference out/inventory_0-120s/trees.csv -t out/segment_0-120s_trajectory.csv -g drive.bag
+fip merge out/inventory_*/ -o out/merged       # trees_merged.gpx, field_sheet.csv, trees.dxf (UTM), ...
+```
+
+</details>
 
 ---
 
