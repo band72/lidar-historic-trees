@@ -366,6 +366,8 @@ def inventory(
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
     model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in the input unit; calibrate with `fip calibrate`.")] = None,
     complete_partial: Annotated[bool, typer.Option("--complete-partial/--no-complete-partial", help="Complete stems seen from one side by measuring over a taller window (fit.complete_partial_stems).")] = False,
+    profile: Annotated[Optional[str], typer.Option("--profile", "-p", help="Site profile to start from: Default, Shrubs, 'Isolated Trees', 'Clear Forest', 'Tall Wide Trees' or 'Large DBH Trees' (as in the app). A --config file and other options override its values.")] = None,
+    exclusions_fp: Annotated[Optional[Path], typer.Option("--exclusions", exists=True, help="Reapply a saved review: exclusions.json from an earlier run (or its folder). Trees are matched by stem position, so ids may differ between runs.")] = None,
     log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
 ):
     """
@@ -374,6 +376,7 @@ def inventory(
     """
     import sys
     from .errors import FIPError
+    from . import exclusions as excl_mod
     from . import inventory as inv
     from .plugins import load_plugins, registry
     from .traits.dbh.robust_fit import FitParams
@@ -389,6 +392,12 @@ def inventory(
         unknown = set(config) - {"ground", "segment", "fit"}
         if unknown:
             raise typer.BadParameter(f"unknown config section(s) {sorted(unknown)}; expected ground, segment, fit")
+        if profile:
+            from . import profiles
+
+            profile = profiles.get(profile).name
+            config = profiles.merged(profile, config)
+            logger.info(f"site profile: {profile}" + (f" (overridden by {config_fp})" if config_fp else ""))
         try:
             req_unit = "auto" if units == "auto" else normalize_unit(units)
             out_unit_opt = normalize_unit(output_units) if output_units else None
@@ -444,15 +453,22 @@ def inventory(
         if not trees:
             raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
         records = inv.fit_trees(trees, ground, fp, gp, keep_points="points" in export)
+        excluded: dict[int, str] = {}
+        if exclusions_fp:
+            excluded, _ = excl_mod.match(records, excl_mod.load(exclusions_fp))
+            records = inv.apply_exclusions(records, excluded)
         ctx = inv.context_for(
             "; ".join(cloud.sources), fp, units=out_unit,
             crs=crs or cloud.crs, crs_wkt=None if crs and crs != cloud.crs else cloud.crs_wkt,
             ground=gp, segment=sp, input_units=in_unit,
+            site_profile=profile,
+            excluded_by_reviewer=sorted(excluded),
+            exclusions_file=str(exclusions_fp) if exclusions_fp else None,
         )
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
         logger.info(
-            f"done: {s['ok']} ok, {s['warning']} warnings, {s['failed']} failed; "
+            f"done: {s['ok']} ok, {s['warning']} warnings, {s['failed']} failed, {s['excluded']} excluded; "
             f"mean DBH {s['mean_dbh'] * 100:.1f} cm; basal area {s['basal_area_m2']:.2f} m^2"
         )
         for w in written:
@@ -531,6 +547,64 @@ def calibrate(
     )
     if abs(res.bias) > 2 * res.rmse / np.sqrt(res.n_matched) and abs(res.bias) > 0.005:
         logger.warning("bias is significant; check breast_height and ground segmentation before trusting the CI")
+
+
+@cli.command()
+def georeference(
+    trees_csv: Annotated[Path, typer.Argument(exists=True, dir_okay=False, help="trees.csv written by `fip inventory` (local coordinates).")],
+    trajectory: Annotated[Optional[Path], typer.Option("--trajectory", "-t", exists=True, dir_okay=False, help="Scanner trajectory CSV (time_s, x, y[, z]) in the same local frame, e.g. from scripts/register_rosbag_kiss_icp.py.")] = None,
+    gnss: Annotated[Optional[Path], typer.Option("--gnss", "-g", exists=True, help="GNSS fixes: CSV (time_s, lat, lon[, alt, h_sd]), a ROS bag or a ROS2 bag folder with NavSatFix messages.")] = None,
+    gnss_topic: Annotated[Optional[list[str]], typer.Option("--gnss-topic", help="NavSatFix topic(s) to use from a bag (default: all; several antennas are pooled). Repeatable.")] = None,
+    alignment_fp: Annotated[Optional[Path], typer.Option("--alignment", "-a", exists=True, dir_okay=False, help="Reuse georef.json from an earlier run instead of fitting (same local frame).")] = None,
+    output_dir: Annotated[Optional[Path], typer.Option("--output", "-o", file_okay=False, help="Output directory (default: next to TREES_CSV).")] = None,
+    log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
+):
+    """
+    Give every tree a latitude/longitude by fitting the run's trajectory to the GNSS fixes of
+    the drive. Writes trees_wgs84.csv, trees_wgs84.geojson, trees.gpx (for a phone or GPS
+    in the field) and georef.json (the fitted transform and its accuracy).
+    """
+    import math
+    import sys
+    from . import georef
+    from .errors import FIPError
+
+    out = output_dir or trees_csv.parent
+    out.mkdir(parents=True, exist_ok=True)
+    logger.configure(level=log_level, log_file=out / "georeference.log")
+    try:
+        if alignment_fp:
+            alignment = georef.Alignment.load(alignment_fp)
+            logger.info(f"using the saved georeference {alignment_fp}")
+        else:
+            if not (trajectory and gnss):
+                raise typer.BadParameter("give --trajectory and --gnss, or --alignment")
+            fixes = georef.read_gnss(gnss, gnss_topic)
+            t, xy = georef.read_trajectory(trajectory)
+            alignment = georef.fit_alignment(t, xy, fixes)
+            alignment.save(out / "georef.json")
+            if gnss.suffix.lower() != ".csv":
+                inside = (fixes.time_s >= t[0]) & (fixes.time_s <= t[-1])
+                georef.GnssFixes(fixes.time_s[inside], fixes.lat[inside], fixes.lon[inside],
+                                 fixes.alt[inside], fixes.h_sd[inside]).write_csv(out / "gnss_fixes.csv")
+        rows, cols = georef.georeference_trees(trees_csv, alignment)
+        written = georef.write_outputs(rows, cols, out, stem=trees_csv.stem)
+        sd = [float(r["position_sd_m"]) for r in rows]
+        n_trees = sum(georef._is_tree(r) for r in rows)
+        logger.info(
+            f"georeferenced {len(rows)} rows ({n_trees} measured trees go to the GPX and GeoJSON); "
+            f"position 1-sd {min(sd):.1f}-{max(sd):.1f} m "
+            f"(GNSS + alignment; add the antenna-to-lidar offset if it is large). "
+            f"Residual RMS {alignment.rms_m:.2f} m, rotation sd {math.degrees(alignment.theta_sd_rad):.2f} deg"
+        )
+        for w in written + ([out / "georef.json"] if not alignment_fp else []):
+            logger.info(f"wrote {w}")
+    except (FIPError, typer.BadParameter) as exc:
+        logger.error(str(exc))
+        sys.exit(2)
+    except Exception:
+        logger.exception("unexpected failure; full traceback in the log file")
+        sys.exit(1)
 
 
 @cli.command()

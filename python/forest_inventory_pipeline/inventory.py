@@ -38,6 +38,7 @@ from typing import Callable, Sequence
 import numpy as np
 from scipy.spatial import KDTree
 
+from . import exclusions
 from .errors import FitError, InputDataError, ParameterError, StageError
 from .plugins import ExportContext, load_plugins, registry
 from .preprocess.height_normalization import interpolate_ground_z
@@ -812,10 +813,14 @@ def dedupe_stems(records: list[TreeRecord]) -> list[TreeRecord]:
 
 
 def apply_exclusions(
-    records: Sequence[TreeRecord], excluded: set[int] | Sequence[int]
+    records: Sequence[TreeRecord],
+    excluded: set[int] | Sequence[int] | dict[int, str],
 ) -> list[TreeRecord]:
     """
     Records with the given tree ids marked ``excluded`` (by a reviewer).
+
+    ``excluded`` is a collection of tree ids, or ``{tree_id: reason}`` (e.g. "shrub"); a
+    reason is added to the message and to the ``exclusion_reason`` column.
 
     Returns new records for the excluded trees and leaves the input untouched, so cached
     fits can be shared. Excluded trees stay in the CSV with their measurements and status
@@ -823,14 +828,23 @@ def apply_exclusions(
     """
     from dataclasses import replace
 
-    ids = {int(i) for i in excluded}
+    reasons = (
+        {int(k): str(v or "") for k, v in excluded.items()}
+        if isinstance(excluded, dict)
+        else {int(i): "" for i in excluded}
+    )
     out = []
     for r in records:
-        if r.tree_id in ids and r.status != STATUS_FAILED:
-            note = "excluded by reviewer" + (
-                f" (was {r.status}: {r.message})" if r.message else f" (was {r.status})"
+        if r.tree_id in reasons and r.status != STATUS_FAILED:
+            reason = reasons[r.tree_id]
+            note = (
+                "excluded by reviewer"
+                + (f": {reason}" if reason else "")
+                + (f" (was {r.status}: {r.message})" if r.message else f" (was {r.status})")
             )
-            out.append(replace(r, status=STATUS_EXCLUDED, message=note, extra=dict(r.extra)))
+            extra = dict(r.extra)
+            extra["exclusion_reason"] = reason
+            out.append(replace(r, status=STATUS_EXCLUDED, message=note, extra=extra))
         else:
             out.append(r)
     return out
@@ -924,6 +938,12 @@ def _write_metadata(
             fh.write(context.crs_wkt)
         extra.append(prj)
         outputs.append({"exporter": "prj", "file": prj.name})
+    excl = exclusions.excluded_in(records)
+    if excl:
+        # the review travels with the results; `fip inventory --exclusions` reapplies it
+        path = exclusions.save(output_dir / exclusions.FILE_NAME, excl, source=context.source)
+        extra.append(path)
+        outputs.append({"exporter": "exclusions", "file": path.name})
     for o in outputs:
         f = output_dir / o["file"]
         if f.exists():

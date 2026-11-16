@@ -130,3 +130,30 @@ def test_reviewer_can_exclude_a_tree(app):
     ms.set_value([first_tree]).run()
     assert not app.exception and not app.error
     assert int(metric(app, "Trees fitted").value.split(" / ")[0]) == before - 1
+
+
+def test_site_profile_sets_the_sidebar(app):
+    sb = app.sidebar
+    prof = next(s for s in sb.selectbox if s.label == "Site profile")
+    assert prof.value == "Default" and prof.options[1:] == [
+        "Shrubs", "Isolated Trees", "Clear Forest", "Tall Wide Trees", "Large DBH Trees"
+    ]
+    prof.set_value("Large DBH Trees").run()
+    assert not app.exception and not app.error
+    slider = lambda label: next(s for s in app.sidebar.slider if s.label.startswith(label))  # noqa: E731
+    assert slider("Max DBH").value == 300
+    assert slider("Stem gap").value == 30
+    assert slider("Neighbours k").value == 250
+    mindbh = next(n for n in app.sidebar.number_input if n.label.startswith("Minimum DBH"))
+    assert mindbh.value == 20.0
+    assert any("heritage" in c.value for c in app.sidebar.caption)
+    # a profile setting without a slider reaches the fit (shown in the Settings tab's YAML)
+    next(s for s in app.sidebar.selectbox if s.label == "Site profile").set_value("Shrubs").run()
+    slider("Max stem tilt").set_value(30.0).run()
+    assert any("changed from this profile" in c.value for c in app.sidebar.caption)
+    app.sidebar.number_input[0].set_value(8)  # demo plot still runs under a profile
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    assert not app.exception and not app.error
+    yaml_text = next(c.value for c in app.code if c.value.startswith("# LiDAR Tree Inventory"))
+    assert "min_top_above_breast_height: 1.5" in yaml_text and "site profile: Shrubs" in yaml_text
+    assert "max_tilt_deg: 30.0" in yaml_text  # the reviewer's change is kept

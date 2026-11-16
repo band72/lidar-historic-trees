@@ -138,3 +138,34 @@ def test_ransac_rejects_out_of_range_radius():
     pts = stem(rng, r=0.9, clutter=0)
     with pytest.raises(FitError):
         rf.fit_stem(pts, FitParams(max_radius=0.5))
+
+
+def _strip_column(rng, r=0.15, visible_deg=70.0, noise=0.01, n=8000):
+    """A 3 m stem (true DBH 2r, axis at the origin) of which only a narrow strip facing +y is
+    seen, as when a fence or another stem hides the rest from a passing vehicle."""
+    half = np.radians(visible_deg / 2)
+    t = rng.uniform(np.pi / 2 - half, np.pi / 2 + half, n)
+    z = rng.uniform(0.0, 3.0, n)
+    rr = r + rng.normal(0, noise, n)
+    return np.c_[rr * np.cos(t), rr * np.sin(t), z]
+
+
+def test_narrow_strip_keeps_the_tree_with_a_lower_bound_dbh():
+    """Too little arc to fix the curvature: the tree is kept (its position is good), the DBH
+    is the visible width as a lower bound, and the range reaches the flattest fitting circle."""
+    for seed in range(5):
+        f = rf.fit_stem(_strip_column(np.random.default_rng(seed)), _FitParams())
+        assert f.dbh_method == "visible width (lower bound)"
+        assert f.status == "warning"
+        assert any("lower bound" in w for w in f.warnings)
+        chord = 0.30 * np.sin(np.radians(35))
+        assert f.dbh == pytest.approx(chord, abs=0.03)
+        assert f.ci_low <= f.dbh <= 0.30 <= f.ci_high  # the true DBH lies in the stated range
+        # placed half the visible width behind the strip: off by at most (D - width) / 2
+        assert np.hypot(f.center_x, f.center_y) < (0.30 - chord) / 2 + 0.03
+
+
+def test_well_seen_stem_is_still_measured_from_its_curvature():
+    f = rf.fit_stem(_strip_column(np.random.default_rng(0), visible_deg=180.0), _FitParams())
+    assert f.dbh_method == "breast-height band"
+    assert f.dbh == pytest.approx(0.30, abs=0.01)

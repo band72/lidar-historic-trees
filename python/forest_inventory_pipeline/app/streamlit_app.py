@@ -19,13 +19,16 @@ import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from forest_inventory_pipeline import exclusions as excl
 from forest_inventory_pipeline import inventory as inv
+from forest_inventory_pipeline import profiles as site_profiles
 from forest_inventory_pipeline.calibration import _to_metres, calibrate
 from forest_inventory_pipeline.errors import FIPError
 from forest_inventory_pipeline.plugins import load_plugins, registry
@@ -340,6 +343,79 @@ def sidebar_units(cloud_units: str) -> DisplayUnits:
     return DisplayUnits(cloud_units)
 
 
+#: sidebar widgets a site profile sets: key -> (section, parameter, metres -> widget value)
+PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
+    "g_cloth": ("ground", "cloth_resolution", float),
+    "g_rigid": ("ground", "rigidness", int),
+    "s_k": ("segment", "k", int),
+    "s_beta": ("segment", "beta", float),
+    "s_voxel": ("segment", "voxel_size", float),
+    "s_minpts": ("segment", "min_tree_points", int),
+    "f_tol": ("fit", "inlier_tolerance", lambda v: round(v * 100, 2)),
+    "f_kernel": ("fit", "kernel_scale", lambda v: round(v * 100, 2)),
+    "f_rmax": ("fit", "max_radius", lambda v: int(round(v * 200))),
+    "f_tilt": ("fit", "max_tilt_deg", float),
+    "f_ovality": ("fit", "ovality_sd", lambda v: round(v * 100, 2)),
+    "f_trunk": ("fit", "reject_non_stems", bool),
+    "f_density": ("fit", "min_surface_density", lambda v: int(round(v))),
+    "f_complete": ("fit", "complete_partial_stems", bool),
+    "f_split": ("fit", "split_stems", bool),
+    "f_gap": ("fit", "stem_gap", lambda v: int(round(v * 100))),
+}
+
+
+def profile_widget_values(name: str, units: DisplayUnits) -> tuple[dict, dict]:
+    """
+    The sidebar values of profile ``name``: ({widget key: value}, fit settings that have no
+    widget). Settings the profile leaves out get the pipeline's defaults.
+    """
+    over = site_profiles.get(name).sections()
+    full = {
+        "ground": {**asdict(inv.GroundParams()), **over["ground"]},
+        "segment": {**asdict(inv.SegmentParams()), **over["segment"]},
+        "fit": {**FitParams().to_dict(), **over["fit"]},
+    }
+    values = {k: conv(full[sec][param]) for k, (sec, param, conv) in PROFILE_WIDGETS.items()}
+    seg = full["segment"]
+    values["s_zr"] = (float(seg["min_z"]), float(seg["max_z"] or 15.0))
+    values["f_min_dbh"] = round(full["fit"]["min_dbh"] / (0.0254 if units.feet else 0.01), 2)
+    managed = {p for (_, p, _) in PROFILE_WIDGETS.values()} | {"min_dbh"}
+    extra = {k: v for k, v in over["fit"].items() if k not in managed}
+    return values, extra
+
+
+def _apply_profile() -> None:
+    """Callback: move the sidebar to the chosen profile's settings."""
+    name = st.session_state.get("profile", site_profiles.DEFAULT)
+    values, extra = profile_widget_values(name, U)
+    st.session_state.update(values)
+    st.session_state["profile_extra"] = extra
+
+
+def sidebar_profile(units: DisplayUnits) -> None:
+    """Site profile dropdown: sets ground, segmentation and fit sliders for an environment."""
+    if "profile" not in st.session_state:  # first run: the sidebar starts at the defaults
+        st.session_state["profile"] = site_profiles.DEFAULT
+        values, extra = profile_widget_values(site_profiles.DEFAULT, units)
+        for k, v in values.items():
+            st.session_state.setdefault(k, v)
+        st.session_state.setdefault("profile_extra", extra)
+    name = st.sidebar.selectbox(
+        "Site profile",
+        list(site_profiles.PROFILES),
+        key="profile",
+        on_change=_apply_profile,
+        help="Starting settings for the kind of site. Choosing one moves the sliders below; "
+        "adjust them afterwards if needed. Ground and segmentation changes apply when you "
+        "press **Run tree extraction**; fit changes apply at once.",
+    )
+    st.sidebar.caption(site_profiles.get(name).summary)
+    values, _ = profile_widget_values(name, units)
+    changed = [k for k, v in values.items() if st.session_state.get(k) != v]
+    if changed:
+        st.sidebar.caption(f"✎ {len(changed)} setting(s) changed from this profile.")
+
+
 def sidebar_segmentation():
     st.sidebar.header("2 · Find trees")
     st.sidebar.caption("Slow stages: adjust, then press **Run tree extraction**.")
@@ -349,8 +425,8 @@ def sidebar_segmentation():
                 "Cloth resolution (m)",
                 0.1,
                 3.0,
-                0.5,
-                0.05,
+                step=0.05,
+                key="g_cloth",
                 help="Coarser cloth bridges gaps; finer follows micro-relief.",
             )
             thresh = st.slider("Ground class threshold (m)", 0.05, 1.5, 0.5, 0.05)
@@ -362,7 +438,9 @@ def sidebar_segmentation():
                 0.01,
                 help="Points this far above the local terrain are not ground (removes stem bases from the terrain model).",
             )
-            rigid = st.select_slider("Rigidness", [1, 2, 3], 3, help="1 = steep terrain, 3 = flat.")
+            rigid = st.select_slider(
+                "Rigidness", [1, 2, 3], key="g_rigid", help="1 = steep terrain, 3 = flat."
+            )
             gsource = st.selectbox(
                 "Ground source",
                 ["auto", "csf", "classification"],
@@ -377,23 +455,28 @@ def sidebar_segmentation():
                 "Neighbours k",
                 10,
                 400,
-                150,
-                10,
+                step=10,
+                key="s_k",
                 help="Larger merges nearby stems; smaller splits them.",
             )
             beta = st.slider(
-                "Density β", 0.05, 0.95, 0.5, 0.05, help="Higher → fewer, larger clusters."
+                "Density β",
+                0.05,
+                0.95,
+                step=0.05,
+                key="s_beta",
+                help="Higher → fewer, larger clusters.",
             )
             voxel = st.slider(
                 "Voxel size (m)",
                 0.02,
                 0.5,
-                0.15,
-                0.01,
+                step=0.01,
+                key="s_voxel",
                 help="Downsampling for clustering only; fitting uses full resolution.",
             )
-            zr = st.slider("Height slice (m)", 0.0, 15.0, (1.0, 4.0), 0.1)
-            min_pts = st.slider("Min points per tree", 10, 2000, 50, 10)
+            zr = st.slider("Height slice (m)", 0.0, 15.0, step=0.1, key="s_zr")
+            min_pts = st.slider("Min points per tree", 10, 2000, step=10, key="s_minpts")
         go_btn = st.form_submit_button("Run tree extraction", type="primary", width="stretch")
     gp = inv.GroundParams(
         cloth_resolution=cloth,
@@ -475,17 +558,17 @@ def sidebar_fit() -> FitParams | None:
         help="Error the point cloud can't reveal (non-circular stems, segmentation). Calibrate it in the Calibration tab.",
     )
     with s.expander("Fitting details"):
-        tol = st.slider("Inlier tolerance (cm)", 0.2, 10.0, 2.0, 0.1)
+        tol = st.slider("Inlier tolerance (cm)", 0.2, 10.0, step=0.1, key="f_tol")
         kernel = st.slider(
             "Robust kernel scale (cm)",
             0.5,
             20.0,
-            3.0,
-            0.5,
+            step=0.5,
+            key="f_kernel",
             help="Residuals far beyond this are down-weighted (branches, clutter).",
         )
-        rmax = st.slider("Max DBH (cm)", 20, 400, 150, 5)
-        tilt = st.slider("Max stem tilt (°)", 5.0, 45.0, 22.5, 0.5)
+        rmax = st.slider("Max DBH (cm)", 20, 400, step=5, key="f_rmax")
+        tilt = st.slider("Max stem tilt (°)", 5.0, 45.0, step=0.5, key="f_tilt")
         iters = st.slider("RANSAC iterations", 100, 20000, 2000, 100)
         nboot = st.slider("Bootstrap resamples", 50, 2000, 200, 50, disabled=method != "bootstrap")
     with s.expander("Quality flags"):
@@ -502,8 +585,8 @@ def sidebar_fit() -> FitParams | None:
             "Stem non-roundness (%, 1 sd)",
             0.0,
             15.0,
-            3.0,
-            0.5,
+            step=0.5,
+            key="f_ovality",
             help="Assumed (long - short) / (long + short) of stem cross-sections. A stem seen "
             "from one side cannot show whether it is round, so its interval is widened by this "
             "amount, more the less of the circumference was scanned. Raise it for fluted or "
@@ -514,7 +597,7 @@ def sidebar_fit() -> FitParams | None:
     with s.expander("Trunk check"):
         trunk_check = st.toggle(
             "Reject clusters that are not trunks",
-            True,
+            key="f_trunk",
             help="Shrubs, posts, walls and sparse scatter are rejected: a trunk must have most "
             "of its 1-2.5 m points on a hollow, continuous, dense surface.",
         )
@@ -522,8 +605,8 @@ def sidebar_fit() -> FitParams | None:
             "Min. points per m² of trunk surface",
             0,
             2000,
-            600,
-            50,
+            step=50,
+            key="f_density",
             disabled=not trunk_check,
             help="Lower it for sparse scans (UAV, distant TLS: about 150). Too low lets sparse "
             "scatter through as large 'trees'.",
@@ -532,8 +615,8 @@ def sidebar_fit() -> FitParams | None:
             f"Minimum DBH ({U.dl}, 0 = off)",
             0.0,
             100.0,
-            0.0,
-            0.5,
+            step=0.5,
+            key="f_min_dbh",
             help="Stems thinner than this are not counted as trees (listed as failed with the "
             "reason). Many inventories use 7.5-12.7 cm (3-5 in); shrub stems are usually thinner, "
             "but so are young trees.",
@@ -542,7 +625,7 @@ def sidebar_fit() -> FitParams | None:
     with s.expander("Partly seen stems"):
         complete = st.toggle(
             "Complete partly seen stems",
-            False,
+            key="f_complete",
             help="For stems seen from one side at breast height (or with too few points there), "
             "measure over a taller window so that other heights, seen from other sides, "
             "complete the circle. A taper term keeps the DBH at breast height. Helps when the "
@@ -562,7 +645,7 @@ def sidebar_fit() -> FitParams | None:
     with s.expander("Merged trees"):
         split = st.toggle(
             "Split clusters with several stems",
-            True,
+            key="f_split",
             help="Segmentation sometimes merges a small tree into a neighbour's cluster. "
             "This finds separate stems in the breast-height band and fits each one.",
         )
@@ -570,8 +653,8 @@ def sidebar_fit() -> FitParams | None:
             "Stem gap (cm)",
             2,
             100,
-            15,
-            1,
+            step=1,
+            key="f_gap",
             disabled=not split,
             help="Points further apart than this (in XY, within the band) belong to different stems.",
         )
@@ -599,6 +682,7 @@ def sidebar_fit() -> FitParams | None:
             min_inlier_ratio=inl,
             split_stems=split,
             stem_gap=gap / 100,
+            **st.session_state.get("profile_extra", {}),
         )
     except FIPError as exc:
         s.error(str(exc))
@@ -1017,16 +1101,85 @@ def excluded_ids(seg: dict) -> list[int]:
     return list(st.session_state.get(excluded_key(seg), []))
 
 
+def reasons_key(seg: dict) -> str:
+    return f"excluded_reasons_{seg['run_id']}"
+
+
+def excluded_map(seg: dict) -> dict[int, str]:
+    """{tree id: reason} of this session's exclusions for this run."""
+    reasons = st.session_state.get(reasons_key(seg), {})
+    return {t: reasons.get(t, "") for t in excluded_ids(seg)}
+
+
 def _toggle_exclusion(seg: dict, tid: int) -> None:
     key = excluded_key(seg)
     cur = list(st.session_state.get(key, []))
-    st.session_state[key] = [t for t in cur if t != tid] if tid in cur else cur + [tid]
+    if tid in cur:
+        st.session_state[key] = [t for t in cur if t != tid]
+    else:
+        st.session_state[key] = cur + [tid]
+        reason = st.session_state.get(f"excl_reason_{tid}") or ""
+        st.session_state.setdefault(reasons_key(seg), {})[tid] = reason
+
+
+def _load_exclusions(seg: dict, records) -> None:
+    """Callback: apply a saved exclusions file to this run (matched by stem position)."""
+    path = st.session_state.get("excl_file_sel")
+    if not path:
+        return
+    try:
+        matched, unmatched = excl.match(records, excl.load(Path(path)))
+    except FIPError as exc:
+        st.session_state["excl_load_msg"] = ("error", str(exc))
+        return
+    key = excluded_key(seg)
+    st.session_state[key] = sorted(set(st.session_state.get(key, [])) | set(matched))
+    st.session_state.setdefault(reasons_key(seg), {}).update(matched)
+    msg = f"Applied {len(matched)} saved exclusion(s) from `{Path(path).name}`."
+    if unmatched:
+        msg += f" {len(unmatched)} matched no tree in this run (see the Log tab)."
+    st.session_state["excl_load_msg"] = ("warning" if unmatched else "success", msg)
 
 
 def exclusion_panel(records, seg: dict) -> None:
     """Reviewer's list of trees to leave out (shrubs, structures the checks let through)."""
     choices = [r.tree_id for r in records if r.status != STATUS_FAILED]
     by_id = {r.tree_id: r for r in records}
+    with st.expander("📂 Reuse a saved review (exclusions.json)", expanded=False):
+        st.caption(
+            "Saving results writes `exclusions.json` next to them. Load it here (or one from an "
+            "earlier run with other settings) to exclude the same trees again: they are matched "
+            f"by stem position, within {excl.MATCH_TOLERANCE * 100:.0f} cm."
+        )
+        browse("excl_file", mode="file", extensions={".json"}, pref_key="last_exclusions_dir")
+        st.button(
+            "Apply saved exclusions",
+            on_click=_load_exclusions,
+            args=(seg, records),
+            disabled=not st.session_state.get("excl_file_sel"),
+        )
+        msg = st.session_state.pop("excl_load_msg", None)
+        if msg:
+            getattr(st, msg[0])(msg[1])
+        current = excl.from_records(records, excluded_ids(seg), excluded_map(seg))
+        if current:
+            import json
+
+            st.download_button(
+                f"Download exclusions.json ({len(current)} trees)",
+                json.dumps(
+                    {
+                        "format": excl.FORMAT,
+                        "version": excl.VERSION,
+                        "source": seg.get("source", ""),
+                        "units": "m",
+                        "trees": [e.to_dict() for e in current],
+                    },
+                    indent=2,
+                ),
+                file_name=excl.FILE_NAME,
+                mime="application/json",
+            )
     st.multiselect(
         "Exclude from the results (reviewer)",
         choices,
@@ -1110,7 +1263,11 @@ def settings_panel(
             "Ground or segmentation settings changed since the last run; press **Run tree extraction** to apply them."
         )
     cfg = {"ground": asdict(gp), "segment": asdict(sp), "fit": fp.to_dict()}
-    text = "# LiDAR Tree Inventory settings (metres)\n" + yaml.safe_dump(cfg, sort_keys=False)
+    profile = st.session_state.get("profile", site_profiles.DEFAULT)
+    text = (
+        f"# LiDAR Tree Inventory settings (metres); started from site profile: {profile}\n"
+        + yaml.safe_dump(cfg, sort_keys=False)
+    )
     st.code(text, language="yaml")
     c1, c2 = st.columns(2)
     c1.download_button(
@@ -1206,6 +1363,7 @@ def main():
     global U
     kind, key, path, upload, demo, reader_opts, cloud_units = sidebar_source()
     U = sidebar_units(cloud_units)
+    sidebar_profile(U)
     run_btn, gp, sp = sidebar_segmentation()
     fp = sidebar_fit()
 
@@ -1276,7 +1434,7 @@ def main():
         except Exception as exc:
             _fail("Fitting", exc)
             return
-    records = inv.apply_exclusions(records, excluded_ids(seg))
+    records = inv.apply_exclusions(records, excluded_map(seg))
     df = to_display(match_truth(records_frame(records), seg.get("truth")))
     if df.empty:
         st.warning("No trees to show.")
@@ -1325,13 +1483,24 @@ def main():
         )
         rec = next(r for r in records if r.tree_id == tid)
         if rec.status != STATUS_FAILED:
-            excl = tid in excluded_ids(seg)
-            st.button(
-                "Include this tree again" if excl else "Exclude this tree",
+            is_excl = tid in excluded_ids(seg)
+            b1, b2 = st.columns([2, 3])
+            if not is_excl:
+                b2.selectbox(
+                    "Reason",
+                    excl.REASONS,
+                    index=None,
+                    key=f"excl_reason_{tid}",
+                    placeholder="Reason (optional)",
+                    label_visibility="collapsed",
+                )
+            b1.button(
+                "Include this tree again" if is_excl else "Exclude this tree",
                 key=f"toggle_excl_{tid}",
                 on_click=_toggle_exclusion,
                 args=(seg, tid),
-                help="Leave this tree out of the results (e.g. a shrub or a structure).",
+                help="Leave this tree out of the results (e.g. a shrub or a structure). "
+                "Saved with the results in exclusions.json.",
             )
         if rec.fitted:
             st.markdown(

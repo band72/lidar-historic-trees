@@ -206,7 +206,9 @@ fip inventory plot.laz -o final -c my_settings.yaml -e csv -e dxf -e geojson -e 
 
 For several plots use the same settings file for all of them, so results are comparable.
 
-**8. Deliver and keep the record.** Use `trees.csv` (tables, spreadsheets), `trees.dxf` (CAD drawings with each DBH circle at its true elevation), and `trees.geojson` (GIS). Keep the whole output folder: `run.json` records the inputs, settings, software version and a checksum of every file, and `fip.log` shows how each tree was handled.
+**8. Georeference a SLAM run (optional).** If the cloud is in local SLAM coordinates and GNSS was recorded, `fip georeference` adds latitude and longitude to every tree and writes a GPX file for finding them in the field ([details](#fip-georeference)).
+
+**9. Deliver and keep the record.** Use `trees.csv` (tables, spreadsheets), `trees.dxf` (CAD drawings with each DBH circle at its true elevation), and `trees.geojson` (GIS). Keep the whole output folder: `run.json` records the inputs, settings, software version and a checksum of every file, and `fip.log` shows how each tree was handled.
 
 The same steps work in the web app: choose the file, set *Crop*, press **Run tree extraction**, adjust the live sliders, then download the files from the **Table & export** tab. The **Calibration** tab applies the suggested `model_sd` with one click.
 
@@ -226,6 +228,21 @@ Choose **Display & export units** at the top: *same as cloud*, *m / cm*, *ft / i
 - **Choose file**: a file chooser for this computer's disk. Open folders from the list (⬆ goes up a level), or type or paste a path into *Folder*. Then pick a point cloud file (📄, any [supported format](#5-input-data), shown with its size), a ROS2 bag folder (🎒), or **Use all … files in this folder** to merge a folder of tiles. The file is read in place, so this is the way to open large files. The chooser starts in the folder you used last time. For ROS bags, a *ROS bag options* panel appears, with topic, target frame, every n-th message and more.
 - **Upload**: drag a file into the browser, up to 4 GB.
 - **Point cloud units** (for files): metres, feet or US survey feet.
+
+### Site profile
+
+The **Site profile** dropdown, above *2 · Find trees*, sets the ground, segmentation and fit settings for a kind of site. It moves the sliders, so you can still adjust any of them; a note then says how many settings differ from the profile. Ground and segmentation changes apply when you press **Run tree extraction**; fit changes apply at once. The **Settings** tab records the profile you started from, and the command line takes the same profiles with `--profile`.
+
+| Profile | For | What it changes |
+|---|---|---|
+| Default | Mixed sites | Nothing: the pipeline's defaults |
+| Shrubs | Trees among dense shrubs and saplings | Larger clusters (k 200, β 0.6, ≥ 100 points) so shrub fragments do not become trees; stricter trunk check; objects must reach 1.5 m above breast height; minimum DBH 7.5 cm |
+| Isolated Trees | Parks, open ground, roadsides, fence lines; trees scanned in passing | Smaller clusters (k 100) keep neighbours apart; tilt up to 30°; 400 points/m² on the trunk; *Complete partly seen stems* on |
+| Clear Forest | Open understory, many straight stems close together | Stems split at a 10 cm gap; tilt up to 15° (steeper is usually a branch); ground rigidness 2 for forest terrain |
+| Tall Wide Trees | Tall trees with wide crowns | Height slice 1-6 m, larger clusters (k 250, β 0.6, 20 cm voxels) so one crown is not split; trunk checked up to 3.5 m; DBH up to 2 m; 1 m ground cloth |
+| Large DBH Trees | Big old and heritage trees | DBH up to 3 m; 30 cm stem gap so one big trunk seen in pieces is not split; looser inlier tolerance and robust kernel (rough bark), 6 % non-roundness, tilt up to 30°; larger clusters; minimum DBH 20 cm |
+
+The profiles are reasoned starting points, not settings calibrated on your data. After a run, check the map and a few rejected clusters, and adjust.
 
 ### Step 2 · Find trees
 
@@ -266,7 +283,7 @@ These sliders update every result instantly.
 - **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ✖ failed). Hover for details, and click a tree to select it.
 - Below the map is a **DBH chart**: every tree's DBH with its confidence interval.
 - **Tree detail**: the breast-height slice with the fitted circle and the CI circles, and a 3D view of the tree with the fitted cylinder.
-- **Table & export**: **Exclude from the results (reviewer)** lists trees you choose to leave out, such as a shrub or structure that passed the checks (or use **Exclude this tree** in *Tree detail*). Excluded trees stay in the CSV with status `excluded`, are left out of totals, the map, DXF and GeoJSON, and are listed in `run.json`. Below it, a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
+- **Table & export**: **Exclude from the results (reviewer)** lists trees you choose to leave out, such as a shrub or structure that passed the checks (or use **Exclude this tree** in *Tree detail*, with an optional reason). Excluded trees stay in the CSV with status `excluded` and an `exclusion_reason`, are left out of totals, the map, DXF and GeoJSON, and are listed in `run.json`. Saving results also writes `exclusions.json`. Load it again under **Reuse a saved review** (or pass `--exclusions` on the command line) to exclude the same trees in a later run: trees are matched by stem position, within 30 cm, so this works after changing settings. Below it, a filterable table with download buttons for every exporter (CSV, DXF and any plugins). Each exporter's options are shown above its button.
 - **Calibration**: upload field measurements to estimate the systematic uncertainty, then apply it with one click.
 - **Settings**: every setting of the current extraction as a YAML file. Save it next to your results, or download it, to repeat the run or to use it from the command line (`fip inventory INPUT -c inventory.yaml`).
 - **Log**: the application log, which you can filter to warnings or errors.
@@ -282,6 +299,7 @@ Run `fip --help` for the command list, and `fip <command> --help` for a command'
 | `fip` (no arguments) or `fip app` | Start the web app |
 | `fip inventory INPUT` | Full inventory: CSV + DXF (+ other exports) |
 | `fip calibrate TREES_CSV FIELD_CSV` | Estimate the systematic uncertainty from field data |
+| `fip georeference TREES_CSV -t TRAJ -g GNSS` | Latitude/longitude for every tree of a locally registered (SLAM) run, plus GPX for the field |
 | `fip plugins` | List readers, exporters and metrics |
 | `fip demo-data OUTPUT` | Write a synthetic plot with true DBH values |
 | `fip self-test` | Check the installation |
@@ -311,8 +329,10 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
+| `--profile NAME` | Start from a [site profile](#site-profile) (`Shrubs`, `"Isolated Trees"`, ...); `-c` files and other options override its values. Recorded in `run.json` |
 | `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
+| `--exclusions FILE` | Reapply a saved review: the `exclusions.json` of an earlier run (or its folder). Trees are matched by stem position, so this works after changing settings |
 | `--log-level trace\|debug\|info\|warn` | Console verbosity (the log file always has full detail) |
 
 Examples:
@@ -352,6 +372,31 @@ fip calibrate out/trees.csv field_measurements.csv [--dbh-unit auto|m|cm|in|ft] 
 ```
 
 See [section 9](#9-calibrating-the-confidence-interval).
+
+### `fip georeference`
+
+A SLAM or KISS-ICP run is in local metres (origin at the first scan). If GNSS was recorded during the drive, this gives every tree a latitude and longitude, so you can find the trees again in the field:
+
+```bash
+fip georeference out/trees.csv -t segment_trajectory.csv -g drive.bag -o out
+```
+
+| Option | Description |
+|---|---|
+| `-t, --trajectory FILE` | Scanner trajectory CSV `time_s,x,y[,z]` in the same local frame (written by `scripts/register_rosbag_kiss_icp.py`) |
+| `-g, --gnss FILE` | GNSS fixes: a CSV `time_s,lat,lon[,alt,h_sd]`, a ROS bag or a ROS2 bag folder with `sensor_msgs/NavSatFix` |
+| `--gnss-topic T` | Use only these NavSatFix topics (default: all; two antennas are pooled) |
+| `-a, --alignment FILE` | Reuse the `georef.json` of an earlier run instead of fitting |
+| `-o, --output DIR` | Output folder (default: next to `TREES_CSV`) |
+
+It fits a 2D rotation and shift (no scale; lidar odometry is metric) from the trajectory to the fixes recorded at the same times, dropping outlier fixes, and writes:
+
+- `trees_wgs84.csv`: every column of `trees.csv` plus `lat`, `lon` and `position_sd_m`
+- `trees_wgs84.geojson`: measured trees as WGS84 points (RFC 7946), for any GIS or phone map app
+- `trees.gpx`: waypoints named `T12 26cm`, for a handheld GPS or a phone app (OsmAnd, Gaia GPS, SW Maps)
+- `georef.json`: the transform, residuals and accuracy; `gnss_fixes.csv`: the fixes used
+
+Accuracy is that of the GNSS. Standalone fixes (no RTK) are good to about ±1 m, and the offset between the GNSS antenna and the lidar (not modelled) adds to that. The fit's residual RMS shows how well the run's shape matches the GNSS track. It cannot reveal a constant GNSS bias. Heights are not georeferenced.
 
 ---
 
@@ -448,7 +493,7 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `confidence`, `ci_method` | Interval level and method |
 | `n_points`, `n_band_points` | Points in the tree, and in the breast-height band |
 | `band_half_width` | Half-height of the measurement window used: 0.25 m normally, more when a partly seen stem was completed |
-| `dbh_method` | `breast-height band`, or `taller window (taper)` for a partly seen stem completed with `--complete-partial` |
+| `dbh_method` | `breast-height band`; `taller window (taper)` for a partly seen stem completed with `--complete-partial`; `visible width (lower bound)` for a stem seen over too little of its circumference to fix the diameter ([details](#8-how-the-measurement-works), "Stems seen through a gap") |
 | `inlier_ratio` | Share of band points on the fitted stem surface |
 | `rmse` | Fit residual (m) |
 | `arc_coverage`, `max_gap_deg` | How much of the stem circumference was scanned, and the largest unscanned gap |
@@ -554,7 +599,10 @@ Invalid values are rejected with a message naming the setting and its valid rang
    - that surface continues through ≥ 80 % of that height and reaches at least breast height + 0.3 m (`min_stem_continuity`), which short posts, stumps and shrubs fail;
    - the inside is empty at breast height (≤ 20 % of points inside 60 % of the radius, `max_interior_fraction`), which foliage fails;
    - the seen surface carries ≥ 600 points per m² (`min_surface_density`) with ≥ 20 % of band points on it, which sparse scatter fails;
-   - the object reaches at least 1 m above breast height (`min_top_above_breast_height`), which low shrubs and stumps fail. Total tree height is deliberately *not* used: a vehicle lidar often cannot see crown tops above about 3 m near the sensor, so real trees can look only 3 m tall.
+   - the object reaches at least 1 m above breast height (`min_top_above_breast_height`), which low shrubs and stumps fail. Total tree height is deliberately *not* used: a vehicle lidar often cannot see crown tops above about 3 m near the sensor, so real trees can look only 3 m tall;
+   - a stem seen over less than 45 % of its circumference (`one_sided_arc`) has ≥ 35 % of its breast-height points on the circle (`min_one_sided_inlier_ratio`): its diameter rests on the curvature of one side, which foliage, structures or two neighbouring stems cannot provide. On real data such clusters had given 100-130 cm "trees".
+
+   **Stems seen through a gap.** A vehicle lidar often sees only a narrow strip of a trunk (60-90°) between a fence, a wall or other stems. With a few cm of registration blur, that strip fits a 1 m circle as well as the real 20 cm one, so the circle's diameter and centre are meaningless (on real data: 80-90 cm "DBH" for 20-35 cm stems, centres 30-40 cm off). When less than 25 % of the circumference is seen (`min_fit_arc_coverage`), the tree is therefore kept but measured differently: `dbh_method` is *visible width (lower bound)*, the DBH is the strip's width (a chord is never wider than the diameter), `ci_low`/`ci_high` give the honest range (from the width, less 10 % for blur, up to the larger of the flattest circle that fits the strip and twice the width), the stem is placed half the width behind the strip, and the tree is a `warning`. A strip too flat for any stem showing 60° or more (a wall, fence or bench) is rejected. The position of these trees is reliable; their DBH is not a measurement, so filter on `dbh_method` before using DBH or basal area.
 
    Optionally, `min_dbh` (off by default; app: *Minimum DBH*) drops stems thinner than your inventory's threshold, often 7.5-12.7 cm (3-5 in). Shrub stems are usually thinner, but so are young trees.
 

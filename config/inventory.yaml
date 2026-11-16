@@ -42,6 +42,9 @@ fit:
   max_interior_fraction: 0.2   # share of breast-height points filling the inside
   min_top_above_breast_height: 1.0  # object must reach breast height + this (low shrubs, stumps fail)
   min_dbh: 0.0                 # stems thinner than this (m) are not trees; 0 = off (e.g. 0.10)
+  min_fit_arc_coverage: 0.25   # less of the circumference seen: diameter undetermined, DBH = visible width (lower bound); 0 = off
+  one_sided_arc: 0.45          # stems seen over less than this share of the circumference ...
+  min_one_sided_inlier_ratio: 0.35  # ... need this share of breast-height points on the circle
   complete_partial_stems: false  # true: widen the window for stems seen from one side (see README)
   max_band_half_width: 0.75      # tallest window when completing partly seen stems (m, +/- breast height)
   ovality_sd: 0.03        # assumed 1-sd non-roundness (long-short)/(long+short); widens the CI of partly seen stems

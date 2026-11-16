@@ -123,6 +123,15 @@ class FitParams:
     min_surface_density: float = 600.0
     #: at least this share of breast-height points must lie on the fitted surface
     min_trunk_inlier_ratio: float = 0.2
+    #: below this share of the circumference seen, the visible arc is too short to fix the
+    #: curvature, so the diameter is undetermined (a small post or stem on the edge of a big
+    #: circle fits as well as a real big trunk): rejected. 0 = off.
+    min_fit_arc_coverage: float = 0.25
+    #: a stem seen over less than this share of its circumference must have at least
+    #: ``min_one_sided_inlier_ratio`` of its breast-height points on the circle: its diameter rests
+    #: on the curvature of one side, which foliage, structures or two stems cannot provide
+    one_sided_arc: float = 0.45
+    min_one_sided_inlier_ratio: float = 0.35
     #: stop widening once this fraction of the circumference is seen (else use the best window)
     complete_target_coverage: float = 0.85
     max_relative_ci_width: float = 0.25
@@ -191,6 +200,15 @@ class FitParams:
             "min_top_above_breast_height must be in [0, 20] m",
         )
         require(0.0 <= self.min_dbh <= 2.0, f"min_dbh must be in [0, 2] m, got {self.min_dbh}")
+        require(
+            0.0 <= self.min_fit_arc_coverage <= 0.6,
+            f"min_fit_arc_coverage must be in [0, 0.6], got {self.min_fit_arc_coverage}",
+        )
+        require(0.0 <= self.one_sided_arc <= 1.0, "one_sided_arc must be in [0, 1]")
+        require(
+            0.0 <= self.min_one_sided_inlier_ratio <= 1.0,
+            "min_one_sided_inlier_ratio must be in [0, 1]",
+        )
         require(0.0 <= self.min_stem_continuity <= 1.0, "min_stem_continuity must be in [0, 1]")
         require(0.0 <= self.max_interior_fraction <= 1.0, "max_interior_fraction must be in [0, 1]")
         require(self.min_surface_density >= 0.0, "min_surface_density must be >= 0")
@@ -275,7 +293,8 @@ class StemFit:
     surface_density: float = float("nan")
     stem_continuity: float = float("nan")
     interior_fraction: float = float("nan")
-    #: how the DBH was obtained: "breast-height band" or "taller window (taper)"
+    #: how the DBH was obtained: "breast-height band", "taller window (taper)" or
+    #: "visible width (lower bound)" (too little of the stem seen to fix its curvature)
     dbh_method: str = "breast-height band"
 
     @property
@@ -607,6 +626,92 @@ def _fit_once(
     return theta, converged
 
 
+VISIBLE_WIDTH = "visible width (lower bound)"
+#: registration blur and range noise that can hide a strip's bulge (m)
+SMEAR_ALLOWANCE = 0.03
+
+
+def _visible_width_fit(
+    arc: np.ndarray, theta: np.ndarray, params: FitParams, why: str, **fit_info
+) -> StemFit:
+    """
+    A stem whose visible strip is too short to fix its curvature.
+
+    Seen through a gap (a fence, other stems) or from far off, a vehicle lidar may see only
+    60-90 degrees of a trunk. Such a strip, with a few cm of registration blur, fits a
+    1 m circle as well as the real 20 cm one, so the circle's diameter and centre are
+    unusable, but the strip's width is not: the chord of the visible arc can only be
+    narrower than the diameter. The DBH reported is that width (a lower bound); the range
+    runs from it, less 10 % for blur, up to the flattest circle that fits the strip. The
+    stem is placed half the width behind the strip, so its position is off by at most
+    (true DBH - width) / 2, against several decimetres for the big circle's centre.
+
+    :param arc: (N, 3) breast-height points on the fitted circle (the visible strip).
+    :param theta: the (unusable) cylinder fit, used for its side: the strip faces the scanner.
+    """
+    if len(arc) < 10:
+        raise FitError(f"not trunk-like: {why}, and too few points on it to measure its width")
+    xy = arc[:, :2]
+    mid = xy.mean(axis=0)
+    _, _, vt = np.linalg.svd(xy - mid, full_matrices=False)
+    along = (xy - mid) @ vt[0]
+    across = (xy - mid) @ vt[1]
+    width = float(np.percentile(along, 98) - np.percentile(along, 2))
+    depth = float(np.percentile(across, 95) - np.percentile(across, 5))
+    # A strip showing at least 60 degrees of a stem bulges by at least 13.4 % of its width
+    # (1 - cos 30 deg, for D = 2 x width). Narrow strips may hide that in a few cm of blur;
+    # a wide flat one is a wall, a fence or a bench, not a stem.
+    if depth < 0.134 * width - SMEAR_ALLOWANCE:
+        raise FitError(
+            f"not trunk-like: {why}, and the visible strip is flat ({width * 100:.0f} cm wide, "
+            f"{depth * 100:.0f} cm deep): a wall, fence or structure?"
+        )
+    width = min(max(width, 2.0 * params.min_radius), 2.0 * params.max_radius)
+    # direction from the fitted circle's centre to the strip (the strip faces the scanner)
+    big_r = float(theta[4])
+    c_big = np.array([theta[0], theta[1]])
+    u = mid - c_big
+    u = u / (np.linalg.norm(u) or 1.0)
+    center = c_big + u * (big_r - width / 2.0)
+    # upper end: the flattest circle that fits the strip, or the diameter if only 60 degrees
+    # were seen (chord = D sin 30 deg), whichever is larger
+    hi = float(min(max(2.0 * big_r, 2.0 * width), 2.0 * params.max_radius))
+    lo = 0.9 * width
+    zq = float(stats.norm.ppf(1 - (1.0 - params.confidence) / 2))
+    warning = (
+        f"diameter not determinable ({why}): DBH {width * 100:.1f} cm is the visible stem "
+        f"width, a lower bound; the true DBH lies between about {lo * 100:.0f} and "
+        f"{hi * 100:.0f} cm. The position is reliable"
+    )
+    return StemFit(
+        center_x=float(center[0]),
+        center_y=float(center[1]),
+        axis=tuple(float(v) for v in _direction(theta[2], theta[3])),
+        radius=width / 2.0,
+        dbh=width,
+        dbh_se=(hi - lo) / (2.0 * zq),
+        view_sd=0.0,
+        ci_low=lo,
+        ci_high=hi,
+        ci_method="visible width",
+        confidence=params.confidence,
+        n_band_points=int(fit_info["n_band"]),
+        inlier_ratio=fit_info["inlier_ratio"],
+        rmse=fit_info["rmse"],
+        arc_coverage=fit_info["coverage"],
+        max_gap_deg=fit_info["max_gap"],
+        tilt_deg=fit_info["tilt"],
+        converged=fit_info["converged"],
+        warnings=[warning],
+        band_half_width=params.band_half_width,
+        stem_dominance=fit_info["dominance"],
+        surface_density=fit_info["surface_density"],
+        stem_continuity=fit_info["continuity"],
+        interior_fraction=fit_info["interior"],
+        dbh_method=VISIBLE_WIDTH,
+    )
+
+
 def _fit_window(
     points: np.ndarray, params: FitParams, seed_offset: int = 0, taper: bool = False
 ) -> StemFit:
@@ -681,6 +786,7 @@ def _fit_window(
     coverage, max_gap = arc_coverage(angles)
     seen_area = max(coverage, 0.05) * np.pi * 2.0 * r * 2.0 * params.band_half_width
     surface_density = float(inlier.sum()) / seen_area
+    undetermined = ""
     if params.reject_non_stems:
         problems = []
         if surface_density < params.min_surface_density:
@@ -692,8 +798,27 @@ def _fit_window(
             problems.append(
                 f"only {inlier_ratio:.0%} of breast-height points on the fitted surface"
             )
+        if coverage < params.one_sided_arc and inlier_ratio < params.min_one_sided_inlier_ratio:
+            # most breast-height points are off the arc: clutter, a structure or several stems,
+            # so neither the circle nor the strip's width says anything about a trunk
+            problems.append(
+                f"seen from one side ({coverage:.0%}) with only {inlier_ratio:.0%} of breast-height "
+                "points on the circle (foliage, a structure or several stems?)"
+            )
         if problems:
             raise FitError("not trunk-like: " + "; ".join(problems))
+        if coverage < params.min_fit_arc_coverage:
+            undetermined = f"seen over only {coverage:.0%} of the circumference"
+    if undetermined:
+        # The trunk checks passed, so this is a stem, but the visible strip is too short (or
+        # too cluttered) to fix the curvature: a big circle fits it as well as the real one.
+        # Keep the tree and its position; give the visible width as a lower-bound DBH.
+        return _visible_width_fit(
+            band[inlier], theta, params, undetermined,
+            n_band=len(band), inlier_ratio=inlier_ratio, rmse=rmse, coverage=coverage,
+            max_gap=max_gap, tilt=tilt, converged=converged, dominance=dominance,
+            surface_density=surface_density, continuity=continuity, interior=interior,
+        )
 
     dbh = 2.0 * r
     alpha = 1.0 - params.confidence
@@ -822,7 +947,7 @@ def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> Ste
             cand = _fit_window(points, wide, seed_offset, taper=True)
         except FitError:
             continue
-        if cand.inlier_ratio < params.min_inlier_ratio:
+        if cand.inlier_ratio < params.min_inlier_ratio or cand.dbh_method == VISIBLE_WIDTH:
             continue
         if best is None or cand.arc_coverage > best.arc_coverage:
             best = cand
