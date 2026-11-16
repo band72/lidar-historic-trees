@@ -665,6 +665,31 @@ def split_multi_stem(
     return out, parent
 
 
+def process_cloud(
+    xyz: np.ndarray,
+    classification: np.ndarray | None,
+    gp: GroundParams,
+    sp: SegmentParams,
+    fp: FitParams,
+    keep_points: bool = False,
+) -> list[TreeRecord]:
+    """
+    The per-cloud stages: ground, height normalization, tree segmentation and the fit, with the
+    overhead context for the roof and crown checks.
+
+    :raises StageError: ``segment`` when no tree instances are found.
+    """
+    ground, non_ground = segment_ground(xyz, gp, classification)
+    normalized = normalize_heights(ground, non_ground, gp)
+    pts, labels = segment_trees(normalized, sp)
+    trees = group_trees(pts, labels, sp.min_tree_points)
+    if not trees:
+        raise StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
+    overhead = OverheadIndex(normalized, non_ground[:, 2]) if fp.reject_roof_posts else None
+    del normalized
+    return fit_trees(trees, ground, fp, gp, keep_points=keep_points, overhead=overhead)
+
+
 def column_flag(top: float, crown_share: float, dbh: float) -> str:
     """
     A warning for a reviewer when what is above a stem does not look like a tree's. Flags

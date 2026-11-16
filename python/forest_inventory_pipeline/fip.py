@@ -446,15 +446,9 @@ def inventory(
         for issue in inv.check_band_inside_slice(fp, sp):
             logger.warning(issue)
 
-        ground, non_ground = inv.segment_ground(cloud.xyz, gp, cloud.classification)
-        normalized = inv.normalize_heights(ground, non_ground, gp)
-        pts, labels = inv.segment_trees(normalized, sp)
-        trees = inv.group_trees(pts, labels, sp.min_tree_points)
-        if not trees:
-            raise inv.StageError("segment", "no tree instances found; check segment.k / segment.beta / min_z")
-        overhead = inv.OverheadIndex(normalized, non_ground[:, 2]) if fp.reject_roof_posts else None
-        del normalized
-        records = inv.fit_trees(trees, ground, fp, gp, keep_points="points" in export, overhead=overhead)
+        records = inv.process_cloud(
+            cloud.xyz, cloud.classification, gp, sp, fp, keep_points="points" in export
+        )
         excluded: dict[int, str] = {}
         added: dict[int, str] = {}
         if exclusions_fp:

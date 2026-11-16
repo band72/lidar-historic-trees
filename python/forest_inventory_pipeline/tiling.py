@@ -123,3 +123,115 @@ def crop_box(tile: Tile, unit: str) -> str:
     from .units import from_metres
 
     return ",".join(f"{float(from_metres(v, unit)):.4f}" for v in tile.buffered)
+
+
+# --- running the stages tile by tile -------------------------------------------------------
+
+
+def run_tiled(
+    inputs,
+    size: float,
+    overlap: float,
+    gp,
+    sp,
+    fp,
+    *,
+    reader: str | None = None,
+    units: str = "auto",
+    keep_points: bool = False,
+    keep_noise: bool = False,
+    reader_options: dict | None = None,
+):
+    """
+    Run ``inventory.process_cloud`` on every buffered tile and assemble one result.
+
+    LAS/LAZ inputs are cropped to each tile while reading (peak memory: one buffered tile);
+    other formats are loaded once and sliced. A tile keeps only the records whose (x, y) it
+    owns; ``dedupe_stems`` then removes a stem fitted twice across a core edge. Tiles with no
+    points or no tree clusters are skipped, with the reason in their summary.
+
+    :return: (records with global ids 1..N and ``extra["tile"]``, ``extra["tile_tree_id"]``;
+        one summary dict per tile: name, core, points, trees, seconds, skipped)
+    """
+    import time
+
+    import numpy as np
+
+    from . import inventory as inv
+    from .errors import InputDataError, StageError
+    from .utils import logger
+
+    reader_options = reader_options or {}
+    probe = None if reader else cloud_extent(inputs, units)
+    whole = None
+    if probe is not None:
+        extent, unit = probe
+    else:
+        logger.info(
+            "this format cannot be cropped while reading: the whole cloud is loaded once, "
+            "then processed tile by tile (ground filtering and segmentation still per tile)"
+        )
+        whole = inv.load_cloud(
+            inputs, reader=reader, units=units, keep_noise=keep_noise, **reader_options
+        )
+        lo, hi = whole.xyz[:, :2].min(axis=0), whole.xyz[:, :2].max(axis=0)
+        extent = (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
+    tiles = plan_tiles(extent, size, overlap)
+    logger.info(f"{len(tiles)} tiles of {size:g} m with {overlap:g} m overlap")
+
+    kept, summaries, errors = [], [], []
+    for t in tiles:
+        t0 = time.perf_counter()
+        info = dict(name=t.name, core=[round(v, 3) for v in t.core], points=0, trees=0,
+                    seconds=0.0, skipped="")
+        summaries.append(info)
+        try:
+            if whole is None:
+                cloud = inv.load_cloud(
+                    inputs, reader=reader, units=units, crop=crop_box(t, unit),
+                    keep_noise=keep_noise, **reader_options,
+                )
+                xyz, cls = cloud.xyz, cloud.classification
+            else:
+                x0, y0, x1, y1 = t.buffered
+                x, y = whole.xyz[:, 0], whole.xyz[:, 1]
+                m = (x >= x0) & (x <= x1) & (y >= y0) & (y <= y1)
+                if not m.any():
+                    raise InputDataError("no points to process in this tile")
+                xyz = whole.xyz[m]
+                cls = whole.classification[m] if whole.classification is not None else None
+            info["points"] = int(len(xyz))
+            records = inv.process_cloud(xyz, cls, gp, sp, fp, keep_points=keep_points)
+        except (InputDataError, StageError) as exc:
+            # a tile holding only an edge of the cloud (a strip of ground, a few points) is not
+            # usable on its own; a broken file fails every tile, which is raised below
+            info["skipped"] = str(exc)
+            errors.append(exc)
+        info["seconds"] = round(time.perf_counter() - t0, 1)
+        if info["skipped"]:
+            logger.info(f"tile {t.name}: skipped ({info['skipped']})")
+            continue
+        own = [r for r in records if t.owns(r.x, r.y)]
+        for r in own:
+            r.extra["tile"] = t.name
+            r.extra["tile_tree_id"] = int(r.tree_id)
+        kept += own
+        logger.info(
+            f"tile {t.name}: {info['points']:,} points, {sum(r.fitted for r in own)} trees "
+            f"measured of {len(own)} clusters in its core, {info['seconds']:.0f} s"
+        )
+
+    if errors and len(errors) == len(tiles):
+        raise errors[0]  # nothing usable anywhere: the input, not the tiling, is the problem
+    # global ids before dedupe (it tracks records by id, and tile ids repeat), then again after
+    for i, r in enumerate(kept, start=1):
+        r.tree_id = i
+    kept = inv.dedupe_stems(kept)
+    for i, r in enumerate(kept, start=1):
+        r.tree_id = i
+    counts: dict[str, int] = {}
+    for r in kept:
+        counts[r.extra["tile"]] = counts.get(r.extra["tile"], 0) + 1
+    for info in summaries:
+        info["trees"] = counts.get(info["name"], 0)
+    return kept, summaries
