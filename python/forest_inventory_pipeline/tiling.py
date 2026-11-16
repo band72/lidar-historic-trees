@@ -70,3 +70,56 @@ def plan_tiles(extent: Box, size: float, overlap: float = DEFAULT_OVERLAP) -> li
             buffered = (x0 - overlap, y0 - overlap, x0 + size + overlap, y0 + size + overlap)
             tiles.append(Tile(r, c, core, buffered, r == nrow - 1, c == ncol - 1))
     return tiles
+
+
+# --- extent and crop boxes ---------------------------------------------------------------------
+
+
+def cloud_extent(paths, units: str = "auto") -> tuple[Box, str] | None:
+    """
+    The XY extent of the input file(s) in metres and their unit, from LAS/LAZ headers only
+    (no points are read). None when any input is not LAS/LAZ: those formats have no cheap
+    extent and are loaded once, then sliced.
+
+    Units follow ``load_cloud``: an explicit ``units`` beats the header; files that declare
+    different units, or some declaring and some not, are refused.
+    """
+    from .crs import from_las_header
+    from .errors import InputDataError
+    from .inventory import expand_inputs
+    from .units import normalize_unit, to_metres
+
+    files = expand_inputs(paths)
+    if not files or any(p.suffix.lower() not in (".las", ".laz") for p in files):
+        return None
+    import laspy
+
+    mins, maxs, declared = [], [], set()
+    for p in files:
+        try:
+            with laspy.open(str(p)) as fh:
+                h = fh.header
+                mins.append(h.mins[:2])
+                maxs.append(h.maxs[:2])
+                declared.add(from_las_header(h).units)
+        except Exception as exc:
+            raise InputDataError(f"{p.name}: cannot read the LAS/LAZ header: {exc}") from exc
+    if units not in (None, "", "auto"):
+        unit = normalize_unit(units)
+    else:
+        if len(declared) > 1:
+            raise InputDataError(
+                f"input files declare different units ({sorted(str(u) for u in declared)}); "
+                "process them separately or set the units explicitly (--units)"
+            )
+        unit = declared.pop() or "m"
+    lo, hi = [min(m[i] for m in mins) for i in (0, 1)], [max(m[i] for m in maxs) for i in (0, 1)]
+    ext = tuple(float(to_metres(v, unit)) for v in (lo[0], lo[1], hi[0], hi[1]))
+    return ext, unit  # type: ignore[return-value]
+
+
+def crop_box(tile: Tile, unit: str) -> str:
+    """The tile's buffered box as ``xmin,ymin,xmax,ymax`` in ``unit``, for ``load_cloud(crop=)``."""
+    from .units import from_metres
+
+    return ",".join(f"{float(from_metres(v, unit)):.4f}" for v in tile.buffered)
