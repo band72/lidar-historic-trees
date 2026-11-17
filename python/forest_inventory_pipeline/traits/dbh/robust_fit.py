@@ -82,6 +82,10 @@ class FitParams:
     #: systematic DBH uncertainty (m, 1 sd) added in quadrature: non-circular stems, taper,
     #: segmentation errors. Point resampling cannot see these. Calibrate with field data.
     model_sd: float = 0.005
+    #: added to every DBH and to both ends of its interval (m), to remove a bias measured in
+    #: the field (fip calibrate suggests it: tape DBH minus scanned DBH, on average). Limited
+    #: to +/- 2 cm: a larger bias points at a wrong breast height, ground or unit instead.
+    dbh_offset: float = 0.0
     ci_method: Literal["analytic", "bootstrap"] = "analytic"
     n_bootstrap: int = 200
     bootstrap_block: Literal["sector", "point"] = "sector"
@@ -214,6 +218,10 @@ class FitParams:
             f"kernel_scale must be in [0.001, 1] m, got {self.kernel_scale}",
         )
         require(0 <= self.model_sd <= 0.2, f"model_sd must be in [0, 0.2] m, got {self.model_sd}")
+        require(
+            abs(self.dbh_offset) <= 0.02 + 1e-12,
+            f"dbh_offset must be within +/- 2 cm (0.02 m), got {self.dbh_offset * 100:.1f} cm",
+        )
         require(
             0 <= self.ovality_sd <= 0.3, f"ovality_sd must be in [0, 0.3], got {self.ovality_sd}"
         )
@@ -1019,6 +1027,21 @@ def _fit_window(
 
 
 def fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> StemFit:
+    """Fit one stem (see :func:`_fit_stem`) and apply ``params.dbh_offset``."""
+    sf = _fit_stem(points, params, seed_offset)
+    off = params.dbh_offset
+    if off:
+        sf.dbh += off
+        sf.ci_low = max(sf.ci_low + off, 0.0)
+        sf.ci_high += off
+        sf.radius = sf.dbh / 2.0
+        sf.notes.append(
+            f"DBH corrected by {off * 100:+.1f} cm (fit.dbh_offset, from field calibration)"
+        )
+    return sf
+
+
+def _fit_stem(points: np.ndarray, params: FitParams, seed_offset: int = 0) -> StemFit:
     """
     Fit one stem and compute its DBH confidence interval.
 

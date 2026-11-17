@@ -27,6 +27,7 @@ fit:
   confidence: 0.95
   ci_method: analytic     # analytic (cluster-robust, fast) | bootstrap (sector resampling)
   model_sd: 0.005         # systematic DBH uncertainty, 1 sd. Calibrate: `fip calibrate`
+  dbh_offset: 0.0             # added to every DBH (m, +/- 0.02); set from `fip calibrate`, not by eye
   n_bootstrap: 200
   bootstrap_block: sector # sector | point
   inlier_tolerance: 0.02

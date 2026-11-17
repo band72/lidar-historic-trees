@@ -55,6 +55,17 @@ class CalibrationResult:
     coverage: float
     model_sd: float
     matches: list[tuple[int, float, float]]  # (tree_id, estimated dbh, reference dbh)
+    #: standard error of the bias, and whether the bias is clearly more than noise (> 2 se)
+    bias_se: float = float("nan")
+    bias_significant: bool = False
+    #: fit.dbh_offset to use: the current one minus the bias when significant (else the
+    #: current one), capped at +/- 2 cm (offset_capped says when the cap was hit)
+    suggested_dbh_offset: float = 0.0
+    offset_capped: bool = False
+    #: how the error changes with tree size (m per 10 cm of DBH), and whether that trend is
+    #: real: then a constant offset over-corrects small trees and under-corrects big ones
+    bias_per_10cm: float = 0.0
+    bias_grows_with_dbh: bool = False
 
 
 def read_reference_csv(path: str | Path, dbh_unit: str = "auto") -> np.ndarray:
@@ -100,8 +111,14 @@ def calibrate(
     reference: np.ndarray,
     current_model_sd: float,
     max_distance: float = 0.5,
+    current_dbh_offset: float = 0.0,
 ) -> CalibrationResult:
-    """Match fitted trees to reference trees and estimate ``model_sd``."""
+    """
+    Match fitted trees to reference trees; estimate ``model_sd``, the bias, the
+    ``dbh_offset`` that removes it, and whether the bias depends on tree size.
+
+    :param current_dbh_offset: the fit.dbh_offset the estimates were made with (m).
+    """
     if max_distance <= 0:
         raise ParameterError("max_distance must be > 0")
     fitted = [r for r in records if r.fitted]
@@ -127,12 +144,33 @@ def calibrate(
     se_stat2 = np.maximum(se_total**2 - current_model_sd**2, 0.0)
     resid = est - refd
     model_var = max(0.0, float(np.var(resid, ddof=1)) - float(np.mean(se_stat2)))
+    n = len(resid)
+    bias = float(resid.mean())
+    bias_se = float(np.std(resid, ddof=1) / np.sqrt(n))
+    significant = abs(bias) > 2 * bias_se
+    want = current_dbh_offset - bias if significant else current_dbh_offset
+    suggested = float(np.clip(want, -0.02, 0.02))
+    # error against tree size: slope of the residuals on the tape DBH, with its standard error
+    slope, slope_se = 0.0, float("inf")
+    if n >= 5 and np.ptp(refd) > 0.05:
+        A = np.c_[refd - refd.mean(), np.ones(n)]
+        coef, *_ = np.linalg.lstsq(A, resid, rcond=None)
+        r = resid - A @ coef
+        slope = float(coef[0])
+        slope_se = float(np.sqrt(np.sum(r**2) / (n - 2) / np.sum((refd - refd.mean()) ** 2)))
+    grows = abs(slope) > 2 * slope_se and abs(slope * 0.1) > 0.002
     return CalibrationResult(
         n_matched=len(best),
         n_reference=len(ref),
-        bias=float(resid.mean()),
+        bias=bias,
         rmse=float(np.sqrt(np.mean(resid**2))),
         coverage=float(np.mean((refd >= lo) & (refd <= hi))),
         model_sd=float(np.sqrt(model_var)),
         matches=[(r.tree_id, r.dbh, float(ref[j, 2])) for j, (_, r) in best.items()],
+        bias_se=bias_se,
+        bias_significant=bool(significant),
+        suggested_dbh_offset=suggested,
+        offset_capped=bool(significant and abs(want) > 0.02 + 1e-12),
+        bias_per_10cm=slope * 0.1,
+        bias_grows_with_dbh=bool(grows),
     )

@@ -187,7 +187,7 @@ def sidebar_profile(units: DisplayUnits) -> None:
 
 
 #: organisation standards, never part of a site profile
-NOT_IN_PROFILES = {"breast_height", "confidence", "ci_method", "model_sd", "n_bootstrap",
+NOT_IN_PROFILES = {"breast_height", "confidence", "ci_method", "model_sd", "dbh_offset", "n_bootstrap",
                    "bootstrap_block", "seed", "large_tree_dbh"}
 
 

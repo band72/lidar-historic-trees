@@ -458,6 +458,7 @@ def sidebar_fit() -> FitParams | None:
         or "analytic"
     )
     st.session_state.setdefault("model_sd_cm", 0.5)
+    st.session_state.setdefault("dbh_offset_d", 0.0)
     model_sd_cm = s.slider(
         "Systematic uncertainty (cm, 1 sd)",
         0.0,
@@ -466,6 +467,17 @@ def sidebar_fit() -> FitParams | None:
         key="model_sd_cm",
         help="Error the point cloud can't reveal (non-circular stems, segmentation). Calibrate it in the Calibration tab.",
     )
+    dbh_offset_d = s.slider(
+        "DBH offset (cm)",  # cm in either display unit: the field calibration is in cm
+        -2.0,
+        2.0,
+        step=0.1,
+        key="dbh_offset_d",
+        help="Added to every DBH and its interval, to remove a bias measured against tape "
+        "measurements. Set it from the Calibration tab (Apply suggested DBH offset), not by eye. "
+        "0 = no correction.",
+    )
+    dbh_offset_m = dbh_offset_d / 100.0
     with s.expander("Fitting details"):
         tol = st.slider("Inlier tolerance (cm)", 0.2, 10.0, step=0.1, key="f_tol")
         kernel = st.slider(
@@ -610,6 +622,7 @@ def sidebar_fit() -> FitParams | None:
             confidence=conf,
             ci_method=method,
             model_sd=model_sd_cm / 100,
+            dbh_offset=float(max(-0.02, min(0.02, dbh_offset_m))),
             inlier_tolerance=tol / 100,
             kernel_scale=kernel / 100,
             max_radius=rmax / 200,
@@ -1305,7 +1318,7 @@ def calibration_panel(records, fp: FitParams):
             st.error(f"Reference CSV is missing column(s) {missing}; found {list(ref_df.columns)}")
             return
         ref = _to_metres(ref_df[["x", "y", "dbh"]].to_numpy(float), unit)
-        res = calibrate(records, ref, fp.model_sd, maxd)
+        res = calibrate(records, ref, fp.model_sd, maxd, current_dbh_offset=fp.dbh_offset)
     except Exception as exc:
         _fail("calibration", exc)
         return
@@ -1320,6 +1333,30 @@ def calibration_panel(records, fp: FitParams):
     if st.button("Apply suggested value", type="primary"):
         st.session_state["model_sd_cm"] = round(min(res.model_sd * 100, 5.0), 2)
         st.rerun()
+
+    st.subheader("DBH offset")
+    if res.bias_grows_with_dbh:
+        st.warning(
+            f"The error grows with tree size ({res.bias_per_10cm * 100:+.2f} cm per 10 cm of DBH). "
+            "A constant offset would over-correct small trees and under-correct big ones: check "
+            "the breast height, the ground and the units first."
+        )
+    elif not res.bias_significant:
+        st.info(
+            f"The bias ({res.bias * 100:+.2f} cm) is within the noise (± {2 * res.bias_se * 100:.2f} "
+            "cm): no DBH offset needed."
+        )
+    else:
+        st.info(
+            f"Scanned DBH is on average {res.bias * 100:+.2f} cm (± {res.bias_se * 100:.2f}) off the "
+            f"tape. Suggested DBH offset: **{res.suggested_dbh_offset * 100:+.1f} cm** (currently "
+            f"{fp.dbh_offset * 100:+.1f} cm)."
+            + (" The full correction is beyond the ± 2 cm limit: check the breast height, the "
+               "ground and the units first." if res.offset_capped else "")
+        )
+        if st.button("Apply suggested DBH offset", type="primary"):
+            st.session_state["dbh_offset_d"] = round(res.suggested_dbh_offset * 100, 1)
+            st.rerun()
 
 
 def log_panel():

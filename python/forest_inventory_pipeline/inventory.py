@@ -937,6 +937,8 @@ def fit_trees(
             rec.band_half_width = sf.band_half_width
             rec.dbh_method = sf.dbh_method
             rec.extra["large_tree"] = "yes" if sf.dbh >= fit.large_tree_dbh else "no"
+            if fit.dbh_offset:
+                rec.extra["dbh_offset_cm"] = round(fit.dbh_offset * 100, 2)
             if overhead is not None:
                 vh = overhead.visible_height(sf.center_x, sf.center_y, sf.radius)
                 rec.extra["visible_height_m"] = round(vh, 2) if np.isfinite(vh) else ""

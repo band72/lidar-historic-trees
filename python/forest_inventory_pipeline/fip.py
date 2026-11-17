@@ -369,6 +369,7 @@ def inventory(
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
     ci_method: Annotated[Optional[str], typer.Option(help="Override fit.ci_method: analytic or bootstrap.")] = None,
     model_sd: Annotated[Optional[float], typer.Option(help="Override fit.model_sd, in the input unit; calibrate with `fip calibrate`.")] = None,
+    dbh_offset_cm: Annotated[Optional[float], typer.Option("--dbh-offset-cm", help="Add this many cm (+/- 2) to every DBH and its interval, to remove a bias measured in the field; `fip calibrate` suggests it.")] = None,
     complete_partial: Annotated[bool, typer.Option("--complete-partial/--no-complete-partial", help="Complete stems seen from one side by measuring over a taller window (fit.complete_partial_stems).")] = False,
     profile: Annotated[Optional[str], typer.Option("--profile", "-p", help="Site profile to start from: Default, 'Roadside / Farmstead', Shrubs, 'Isolated Trees', 'Clear Forest', 'Tall Wide Trees', 'Large DBH Trees', or one you saved in the app. A --config file and other options override its values.")] = None,
     scanner: Annotated[Optional[str], typer.Option("--scanner", help="Scanner profile: 'Vehicle (mobile lidar)' (default), 'Backpack / handheld', 'Tripod (terrestrial)' or 'Drone (UAV)' (a unique start, e.g. drone, is enough). Sets the trunk point density the site profile scales.")] = None,
@@ -472,6 +473,8 @@ def inventory(
             logger.info("units are feet: using the US breast height of 4.5 ft (1.3716 m)")
         if model_sd is not None:
             fit_cfg["model_sd"] = float(to_metres(model_sd, in_unit))
+        if dbh_offset_cm is not None:
+            fit_cfg["dbh_offset"] = dbh_offset_cm / 100.0
         fp = FitParams(**fit_cfg)
         for issue in inv.check_band_inside_slice(fp, sp):
             logger.warning(issue)
@@ -606,6 +609,7 @@ def calibrate(
     xy_unit: Annotated[Optional[str], typer.Option(help="Unit of reference x, y: m, ft or us_ft (default: the length_unit of TREES_CSV).")] = None,
     max_distance: Annotated[float, typer.Option(help="Max stem position mismatch (m) for matching.")] = 0.5,
     current_model_sd: Annotated[float, typer.Option(help="model_sd used for TREES_CSV (m).")] = 0.005,
+    current_dbh_offset_cm: Annotated[Optional[float], typer.Option("--current-dbh-offset-cm", help="DBH offset TREES_CSV was made with (cm); default: its dbh_offset_cm column, else 0.")] = None,
 ):
     """Estimate fit.model_sd from field-measured reference trees."""
     logger.configure(level="info")  # the result is the output: show it whatever LOG_LEVEL says
@@ -653,7 +657,12 @@ def calibrate(
         else:
             ref = read_reference_csv(reference_csv, dbh_unit)
             ref[:, :2] = to_metres(ref[:, :2], normalize_unit(xy_unit) if xy_unit else csv_unit)
-        res = _calibrate(recs, ref, current_model_sd, max_distance)
+        if current_dbh_offset_cm is None:
+            with trees_csv.open(newline="", encoding="utf-8") as fh:
+                offs = {r.get("dbh_offset_cm") for r in _csv.DictReader(fh) if r.get("dbh_offset_cm")}
+            current_dbh_offset_cm = float(offs.pop()) if len(offs) == 1 else 0.0
+        current_off = current_dbh_offset_cm / 100.0
+        res = _calibrate(recs, ref, current_model_sd, max_distance, current_dbh_offset=current_off)
     except (FIPError, KeyError, ValueError) as exc:
         logger.error(f"calibration failed: {exc}")
         sys.exit(2)
@@ -670,8 +679,27 @@ def calibrate(
         + f"  (re-run with --model-sd {sd_cli:.5f}"
         + (f" --units {csv_unit})" if csv_unit != "m" else ")")
     )
-    if abs(res.bias) > 2 * res.rmse / np.sqrt(res.n_matched) and abs(res.bias) > 0.005:
-        logger.warning("bias is significant; check breast_height and ground segmentation before trusting the CI")
+    if res.bias_grows_with_dbh:
+        logger.warning(
+            f"the error grows with tree size ({res.bias_per_10cm * 100:+.2f} cm per 10 cm of DBH): "
+            "a constant DBH offset would over-correct small trees and under-correct big ones. "
+            "Check breast_height, the ground, and the units first"
+        )
+    elif res.bias_significant:
+        logger.info(
+            f"bias {res.bias * 100:+.2f} cm (+/- {res.bias_se * 100:.2f}) is more than noise: "
+            f"suggested DBH offset {res.suggested_dbh_offset * 100:+.1f} cm "
+            f"(re-run with --dbh-offset-cm {res.suggested_dbh_offset * 100:.1f})"
+            + (f"; the full correction would be {(current_off - res.bias) * 100:+.1f} cm, beyond the "
+               "+/- 2 cm limit: check breast_height, the ground and the units first"
+               if res.offset_capped else "")
+        )
+    else:
+        logger.info(
+            f"bias {res.bias * 100:+.2f} cm is within the noise (+/- {2 * res.bias_se * 100:.2f}): "
+            "no DBH offset needed"
+            + (f"; keep the current {current_off * 100:+.1f} cm" if current_off else "")
+        )
 
 
 @cli.command()

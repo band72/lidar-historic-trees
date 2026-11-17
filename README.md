@@ -361,6 +361,7 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--scanner NAME` | [Scanner profile](#site-profile-and-scanner): `vehicle` (default), `backpack`, `tripod` or `drone`. Recorded in `run.json` |
 | `--complete-partial` | Complete stems seen from one side by measuring over a taller window ([details](#stems-that-are-only-partly-visible)) |
 | `--model-sd S` | Override the systematic uncertainty (in `--units`) |
+| `--dbh-offset-cm CM` | Add this many cm (±2) to every DBH and its interval, to remove a bias measured in the field ([DBH offset](#dbh-offset-removing-a-bias-measured-in-the-field)); `fip calibrate` suggests it |
 | `--exclusions FILE` | Reapply a saved review: the `exclusions.json` of an earlier run (or its folder), with its exclusions and *This is a tree* additions. Trees are matched by stem position, so this works after changing settings or with `--tile` |
 | `--log-level trace\|debug\|info\|warn` | Console verbosity (the log file always has full detail) |
 
@@ -674,6 +675,7 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `message` | Warnings or the reason a fit failed |
 | `cluster_id` | Segmentation cluster (differs from `tree_id` when merged trees were split apart) |
 | `large_tree` | `yes` when the DBH is at least `fit.large_tree_dbh` (default 0.5 m, about 20 in) |
+| `dbh_offset_cm` | The [DBH offset](#dbh-offset-removing-a-bias-measured-in-the-field) applied to this tree (only when one is set) |
 | `ground_offset_m` | The ground level used for this stem minus the level of the ground around it (a plane through the ground points within 3 m, so slopes are followed). Beyond ±0.5 m (`fit.ground_check_tolerance`) the tree gets a `warning`: breast height, and so the DBH, may be taken at the wrong level. On the test drive, 3 of 107 trees of one segment (one 1.7 m off); the rest within 0.31 m |
 | `crown_share` | Share of the material 2.5 m and higher within 3 m of the stem that lies away from the stem column: 0.5-0.9 under a crown, near 0 for a bare column (a pole, a dead snag, or a trunk whose crown is above the scanner's view) |
 | `visible_height_m` | Top of what the scanner saw above the stem (99th percentile within 1 m of it), in metres. A vehicle lidar often cannot see crown tops, so this is a lower bound on tree height, not the height |
@@ -824,7 +826,15 @@ The interval is only honest if the systematic uncertainty matches your data: you
    It reports the matched trees, bias, RMSE, the current CI coverage, and a **suggested `model_sd`**.
 4. Re-run with `--model-sd <value>`, or set `fit.model_sd` in your config. In the web app, use the **Calibration** tab and press **Apply suggested value**.
 
-If calibration reports a significant **bias**, check the breast height and the ground segmentation before trusting any intervals.
+### DBH offset: removing a bias measured in the field
+
+If the scanned DBH is on average larger or smaller than the tape (registration blur, bark, how the tape is read), every tree is off by about the same amount. **`fit.dbh_offset`** adds a fixed correction to every DBH and to both ends of its interval, within **±2 cm**.
+
+- **Set it from calibration, not by eye.** `fip calibrate` (and the app's **Calibration** tab) reports the bias with its uncertainty. When the bias is clearly more than noise (more than twice its standard error), it suggests the offset that removes it: *"suggested DBH offset −0.9 cm (re-run with --dbh-offset-cm -0.9)"*. In the app, **Apply suggested DBH offset** sets the slider (*3 · Fit stems*, under *Systematic uncertainty*); on the command line, `--dbh-offset-cm`. Calibrating again a run that already used an offset suggests the new total (the run's `dbh_offset_cm` column is read).
+- **Only for a constant bias.** Calibration also checks whether the error grows with tree size. If scans read, say, 6 % large, a constant offset would over-correct small trees and under-correct big ones, so it warns instead of suggesting a number: check the breast height, the ground and the units.
+- **±2 cm is a deliberate limit.** A bias larger than that is a sign of something else wrong (breast height, ground, units), not something to correct away; the suggestion is capped and says so.
+- **Corrected results are marked.** Each tree gets `dbh_offset_cm` in the CSV, its message notes the correction, and `run.json` records it. The offset is not part of site profiles: like the systematic uncertainty, it belongs to your scanner and field conditions.
+- **Recalibrate** after changing the scanner, its settings, or the kind of site.
 
 ---
 
