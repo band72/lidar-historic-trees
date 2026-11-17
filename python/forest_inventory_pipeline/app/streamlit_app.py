@@ -196,6 +196,9 @@ def load_source(
 def run_segmentation(cloud, gp: inv.GroundParams, sp: inv.SegmentParams, progress) -> dict:
     t0 = time.perf_counter()
     points = cloud.xyz
+    # stop now, not when the system kills the app minutes later (2022-03-08: six segments,
+    # 233 M points, killed while clustering at 40 GB)
+    inv.check_memory(len(points))
     progress.progress(0.05, "ground segmentation…")
     ground, non_ground = inv.segment_ground(points, gp, cloud.classification)
     progress.progress(0.35, "height normalization…")

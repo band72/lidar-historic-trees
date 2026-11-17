@@ -362,6 +362,8 @@ def inventory(
     crs: Annotated[Optional[str], typer.Option("--crs", help="Coordinate system to record in the outputs, e.g. EPSG:25832 (overrides the file header).")] = None,
     tile: Annotated[Optional[float], typer.Option("--tile", help="Process a large cloud as square tiles of this size (m, at least 20), each with an overlap buffer, and write one result. LAS/LAZ are cropped while reading, so memory is that of one tile.")] = None,
     tile_overlap: Annotated[float, typer.Option("--tile-overlap", help="Buffer around each tile (m, at least 5, less than half the tile): a tree is kept by the tile containing its stem, measured with this much context.")] = 10.0,
+    same_frame: Annotated[bool, typer.Option("--same-frame", help="Several input files without a coordinate system that each start at (0, 0) are refused as separate SLAM runs; use this when they really share one frame.")] = False,
+    no_memory_check: Annotated[bool, typer.Option("--no-memory-check", help="Process even when the estimated memory need exceeds the memory available (the system may kill the run).")] = False,
     keep_noise: Annotated[bool, typer.Option("--keep-noise", help="Keep points classified as noise (ASPRS 7/18).")] = False,
     breast_height: Annotated[Optional[float], typer.Option(help="Override fit.breast_height, in the input unit (default 1.3 m; 4.5 ft for feet).")] = None,
     confidence: Annotated[Optional[float], typer.Option(help="Override fit.confidence, e.g. 0.95.")] = None,
@@ -454,9 +456,13 @@ def inventory(
                     crs_wkt=meta["crs_wkt"], sources=meta["sources"],
                 )
             else:  # cannot be cropped while reading: load once, run_tiled reuses it
-                cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, keep_noise=keep_noise, **reader_opts)
+                cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, keep_noise=keep_noise,
+                                       check_frames=not same_frame, **reader_opts)
         else:
-            cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, crop=crop, keep_noise=keep_noise, **reader_opts)
+            cloud = inv.load_cloud(inputs, reader=reader, units=req_unit, crop=crop, keep_noise=keep_noise,
+                                   check_frames=not same_frame, **reader_opts)
+            if not no_memory_check:
+                inv.check_memory(len(cloud.xyz))
         in_unit = cloud.units
         out_unit = out_unit_opt or in_unit
         if breast_height is not None:
@@ -474,7 +480,7 @@ def inventory(
             records, tiles_info = tiling.run_tiled(
                 inputs, tile, tile_overlap, gp, sp, fp, reader=reader, units=req_unit,
                 keep_points="points" in export, keep_noise=keep_noise, reader_options=reader_opts,
-                cloud=cloud if cloud.xyz is not None else None,
+                cloud=cloud if cloud.xyz is not None else None, check_frames=not same_frame,
             )
             used = [t for t in tiles_info if not t["skipped"]]
             if used:

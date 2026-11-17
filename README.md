@@ -352,6 +352,8 @@ fip inventory INPUT... [options]     # one or more files, or a folder of tiles
 | `--breast-height H` | Override the breast height (in `--units`; default 1.3 m, or 4.5 ft for feet) |
 | `--confidence P` | Override the confidence level, e.g. `0.9` |
 | `--ci-method analytic\|bootstrap` | Override the CI method |
+| `--same-frame` | Several files without a coordinate system that each start at (0, 0) are refused as separate SLAM runs; use this when they really share one frame |
+| `--no-memory-check` | Process even when the estimated memory need (about 220 bytes per point) exceeds the memory available |
 | `--tile SIZE` | Process a large cloud as square tiles of `SIZE` m (at least 20), each with an overlap buffer, and write one result ([details](#large-clouds-tiles)) |
 | `--tile-overlap M` | Buffer around each tile, in m (default 10; at least 5, less than half the tile) |
 | `--profile NAME` | Start from a [site profile](#site-profile-and-scanner) (`"Roadside / Farmstead"`, `Shrubs`, ..., or one you saved); `-c` files and other options override its values. Recorded in `run.json` |
@@ -929,7 +931,8 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Windows: SmartScreen warning** | The installer is unsigned: *More info → Run anyway* |
 | **Linux: "glibc … is too old"** | Use Ubuntu 22.04+ / Debian 12+, or [install from source](#from-source-for-development-or-the-latest-code) |
 | **"coordinates are longitude/latitude"** | Reproject the file to a projected CRS (e.g. UTM) with PDAL or LAStools first |
-| **Large file, out of memory** | Cut out the plot with `--crop` (LAS/LAZ are cropped while reading) |
+| **"N M points need about X GB of memory, but only Y GB is available"**, or the app/run simply stops (the system killed it) | The pipeline needs about 220 bytes per point at its peak (a 2-minute vehicle segment: about 10 GB). Process fewer files at once, cut out the plot with `--crop` (LAS/LAZ are cropped while reading), or use `--tile` on the command line ([tiles](#large-clouds-tiles)); closing other programs frees memory too. `--no-memory-check` runs anyway |
+| **"N files … each have their own coordinates starting at (0, 0) and no coordinate system"** | They are separate SLAM/KISS-ICP runs (e.g. the segments of one drive), each in its own frame: loaded together they stack different places on top of each other. Run each file on its own, then `fip georeference` each and `fip merge` them ([one map of a drive](#fip-merge)). If they really share one frame, add `--same-frame` |
 | **Tiles: "different coordinate systems / units"** | Tiles from different projects can't be merged; process them separately |
 | **Anything else** | Run `fip self-test`, and check `fip.log` or the app's **Log** tab. When reporting a problem, include the log |
 

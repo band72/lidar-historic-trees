@@ -160,6 +160,7 @@ def run_tiled(
     keep_noise: bool = False,
     reader_options: dict | None = None,
     cloud=None,
+    check_frames: bool = True,
 ):
     """
     Run ``inventory.process_cloud`` on every buffered tile and assemble one result.
@@ -195,7 +196,8 @@ def run_tiled(
         )
         if whole is None:
             whole = inv.load_cloud(
-                inputs, reader=reader, units=units, keep_noise=keep_noise, **reader_options
+                inputs, reader=reader, units=units, keep_noise=keep_noise,
+                check_frames=check_frames, **reader_options,
             )
         lo, hi = whole.xyz[:, :2].min(axis=0), whole.xyz[:, :2].max(axis=0)
         extent = (float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1]))
@@ -217,7 +219,7 @@ def run_tiled(
                     raise InputDataError("no points to process in this tile")
                 tile_cloud = inv.load_cloud(
                     files, reader=reader, units=units, crop=crop_box(t, unit),
-                    keep_noise=keep_noise, **reader_options,
+                    keep_noise=keep_noise, check_frames=check_frames, **reader_options,
                 )
                 xyz, cls = tile_cloud.xyz, tile_cloud.classification
             else:

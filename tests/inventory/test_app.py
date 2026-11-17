@@ -278,3 +278,12 @@ def test_changed_settings_table_and_keyed_controls(app):
     next(b for b in app.sidebar.button if b.label == "↺ Reset").click().run()
     assert next(s for s in app.sidebar.slider if s.label == "Min arc coverage").value == 0.6
     assert next(s for s in app.sidebar.slider if s.label.startswith("Ground class threshold")).value == 0.5
+
+
+def test_too_little_memory_is_reported_before_processing(app, monkeypatch):
+    from forest_inventory_pipeline import inventory as inv
+
+    monkeypatch.setattr(inv, "available_memory_bytes", lambda: 2**20)  # 1 MB free
+    app.sidebar.number_input[0].set_value(8)
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    assert any("memory" in e.value for e in app.error), [e.value for e in app.error]
