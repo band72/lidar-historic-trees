@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from forest_inventory_pipeline import guards
 from forest_inventory_pipeline import inventory as inv
 from forest_inventory_pipeline.errors import InputDataError
 from forest_inventory_pipeline.synthetic import make_plot
@@ -63,7 +64,7 @@ def test_npy_runs_are_checked_too(tmp_path):
 
 
 def test_too_little_memory_stops_before_processing(monkeypatch):
-    monkeypatch.setattr(inv, "available_memory_bytes", lambda: 8 * 10**9)  # 8 GB free
+    monkeypatch.setattr(guards, "available_memory_bytes", lambda: 8 * 10**9)  # 8 GB free
     with pytest.raises(InputDataError) as e:
         inv.check_memory(233_648_390)  # the six-segment load of 2022-03-08
     msg = str(e.value)
@@ -72,7 +73,7 @@ def test_too_little_memory_stops_before_processing(monkeypatch):
 
 
 def test_unknown_memory_is_not_an_error(monkeypatch):
-    monkeypatch.setattr(inv, "available_memory_bytes", lambda: None)
+    monkeypatch.setattr(guards, "available_memory_bytes", lambda: None)
     inv.check_memory(10**9)
 
 
@@ -87,7 +88,7 @@ def test_cli_memory_check_and_override(tmp_path, monkeypatch):
     from forest_inventory_pipeline import fip
 
     np.save(tmp_path / "p.npy", make_plot(n_trees=4, seed=3).points)
-    monkeypatch.setattr(inv, "available_memory_bytes", lambda: 2**20)  # 1 MB free
+    monkeypatch.setattr(guards, "available_memory_bytes", lambda: 2**20)  # 1 MB free
     runner = CliRunner()
     res = runner.invoke(fip.cli, ["inventory", str(tmp_path / "p.npy"), "-o", str(tmp_path / "a"), "-e", "csv"])
     assert res.exit_code == 2

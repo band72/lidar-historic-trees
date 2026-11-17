@@ -19,7 +19,6 @@ import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -34,7 +33,6 @@ from forest_inventory_pipeline.errors import FIPError
 from forest_inventory_pipeline.plugins import load_plugins, registry
 from forest_inventory_pipeline.records import (
     STATUS_ADDED,
-    STATUS_EXCLUDED,
     STATUS_FAILED,
     STATUS_OK,
     STATUS_WARNING,
@@ -43,14 +41,22 @@ from forest_inventory_pipeline.synthetic import make_plot
 from forest_inventory_pipeline.traits.dbh.robust_fit import FitParams, band_points, residuals
 from forest_inventory_pipeline.units import (
     LABELS,
-    from_metres,
-    is_feet,
-    normalize_unit,
     to_metres,
 )
 from forest_inventory_pipeline.utils import logger
 
 from forest_inventory_pipeline.app.file_browser import browse, load_prefs, save_pref
+from forest_inventory_pipeline.app.geo_panels import drive_panel, georef_panel
+from forest_inventory_pipeline.app.profile_panel import profile_save_panel, sidebar_profile
+from forest_inventory_pipeline.app.styles import (
+    CATEGORY_STYLE,
+    NOT_MEASURED,
+    SERIES_ESTIMATE,
+    SERIES_TRUTH,
+    STATUS_STYLE,
+    DisplayUnits,
+    map_category,
+)
 
 
 def _log_dir() -> Path:
@@ -72,60 +78,8 @@ def _log_dir() -> Path:
 LOG_DIR = _log_dir()
 LOG_FILE = LOG_DIR / "app.log"
 
-# status palette (fixed) + marker shape + label: status is never carried by colour alone
-STATUS_STYLE = {
-    STATUS_OK: dict(color="#0ca30c", symbol="circle", label="✔ ok"),
-    STATUS_WARNING: dict(color="#fab219", symbol="triangle-up", label="⚠ warning"),
-    STATUS_FAILED: dict(color="#d03b3b", symbol="x", label="✖ failed"),
-    STATUS_EXCLUDED: dict(color="#8a8a8a", symbol="circle-x-open", label="⊘ excluded"),
-    STATUS_ADDED: dict(color="#2a78d6", symbol="cross", label="✚ added by reviewer"),
-}
-NOT_MEASURED = (STATUS_FAILED, STATUS_EXCLUDED, STATUS_ADDED)
-#: map categories: statuses, with lower-bound DBH trees (seen over too little of the stem to
-#: fix the diameter) split from the other warnings, so their DBH is not read as measured
-LOWER_BOUND = "lower_bound"
-CHECK = "check"  # flagged: possibly a pole/snag, or a shrub (see inventory.column_flag)
-CATEGORY_STYLE = {
-    STATUS_OK: STATUS_STYLE[STATUS_OK],
-    STATUS_WARNING: STATUS_STYLE[STATUS_WARNING],
-    LOWER_BOUND: dict(color="#fab219", symbol="triangle-up-open", label="◬ DBH lower bound"),
-    CHECK: dict(color="#9a4fd0", symbol="diamond-open", label="◇ check: pole or shrub?"),
-    **{k: v for k, v in STATUS_STYLE.items() if k not in (STATUS_OK, STATUS_WARNING)},
-}
-
-
-def map_category(df: pd.DataFrame) -> pd.Series:
-    method = df["dbh_method"] if "dbh_method" in df else pd.Series("", index=df.index)
-    lower = (df.status == STATUS_WARNING) & method.fillna("").str.startswith("visible width")
-    msg = df["message"].fillna("") if "message" in df else pd.Series("", index=df.index)
-    check = (df.status == STATUS_WARNING) & msg.str.contains("bare column|tall for a", regex=True)
-    return df.status.where(~lower, LOWER_BOUND).where(~check, CHECK)
-
-
-class DisplayUnits:
-    """Converts internal metres to the unit chosen for display and export."""
-
-    def __init__(self, unit: str = "m"):
-        self.unit = normalize_unit(unit)
-        self.feet = is_feet(self.unit)
-        self.ul = "ft" if self.feet else "m"  # length label
-        self.dl = "in" if self.feet else "cm"  # diameter label
-        self.al = "ft²/ac" if self.feet else "m²/ha"  # basal area per area label
-
-    def L(self, v):
-        return from_metres(v, self.unit)
-
-    def D(self, v_m):
-        return v_m / 0.0254 if self.feet else v_m * 100.0
-
-    def BA(self, m2_per_ha: float) -> float:
-        return m2_per_ha * 4.356 if self.feet else m2_per_ha  # 1 m²/ha = 4.356 ft²/acre
-
-
 U = DisplayUnits("m")  # replaced in main() from the sidebar choice
 
-SERIES_ESTIMATE = "#2a78d6"  # categorical slot 1
-SERIES_TRUTH = "#eb6834"  # categorical slot 2
 
 
 # --------------------------------------------------------------------------- setup
@@ -368,178 +322,6 @@ def sidebar_units(cloud_units: str) -> DisplayUnits:
     if cloud_units == "auto":  # known once the file has been read
         cloud_units = (st.session_state.get("seg") or {}).get("units", "m")
     return DisplayUnits(cloud_units)
-
-
-#: sidebar widgets a site profile sets: key -> (section, parameter, metres -> widget value)
-PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
-    "g_cloth": ("ground", "cloth_resolution", float),
-    "g_rigid": ("ground", "rigidness", int),
-    "g_thresh": ("ground", "class_threshold", float),
-    "g_refine": ("ground", "refine_tolerance", lambda v: 0.15 if v is None else float(v)),
-    "g_source": ("ground", "source", str),
-    "f_cov": ("fit", "min_arc_coverage", float),
-    "f_relw": ("fit", "max_relative_ci_width", lambda v: int(round(v * 100))),
-    "f_inl": ("fit", "min_inlier_ratio", float),
-    "s_k": ("segment", "k", int),
-    "s_beta": ("segment", "beta", float),
-    "s_voxel": ("segment", "voxel_size", float),
-    "s_minpts": ("segment", "min_tree_points", int),
-    "f_tol": ("fit", "inlier_tolerance", lambda v: round(v * 100, 2)),
-    "f_kernel": ("fit", "kernel_scale", lambda v: round(v * 100, 2)),
-    "f_rmax": ("fit", "max_radius", lambda v: int(round(v * 200))),
-    "f_tilt": ("fit", "max_tilt_deg", float),
-    "f_ovality": ("fit", "ovality_sd", lambda v: round(v * 100, 2)),
-    "f_trunk": ("fit", "reject_non_stems", bool),
-    "f_roof": ("fit", "reject_roof_posts", bool),
-    "f_minh": ("fit", "min_top_above_breast_height", lambda v: round(float(v), 2)),
-    "f_dom": ("fit", "min_stem_dominance", lambda v: round(float(v), 2)),
-    "f_interior": ("fit", "max_interior_fraction", lambda v: round(float(v), 2)),
-    "f_checktop": ("fit", "stem_check_top", lambda v: round(float(v), 2)),
-    "f_pole": ("fit", "pole_action", str),
-    "f_short": ("fit", "short_action", str),
-    "f_density": ("fit", "min_surface_density", lambda v: int(round(v))),
-    "f_complete": ("fit", "complete_partial_stems", bool),
-    "f_split": ("fit", "split_stems", bool),
-    "f_gap": ("fit", "stem_gap", lambda v: int(round(v * 100))),
-}
-
-
-#: readable names of settings a profile can change (for "What this profile changes")
-SETTING_LABELS = {
-    "cloth_resolution": "ground cloth (m)", "rigidness": "ground rigidness",
-    "k": "neighbours k", "beta": "density β", "voxel_size": "voxel size (m)",
-    "min_tree_points": "min points per tree", "max_z": "height slice top (m)",
-    "inlier_tolerance": "inlier tolerance (m)", "kernel_scale": "robust kernel (m)",
-    "max_radius": "max DBH / 2 (m)", "max_tilt_deg": "max tilt (°)", "ovality_sd": "non-roundness",
-    "reject_non_stems": "trunk check", "reject_roof_posts": "roof check",
-    "min_surface_density": "points per m² of trunk", "complete_partial_stems": "complete partly seen stems",
-    "split_stems": "split merged stems", "stem_gap": "stem gap (m)", "min_dbh": "minimum DBH (m)",
-    "min_top_above_breast_height": "must reach above breast height (m)",
-    "min_stem_dominance": "share of points on the trunk", "max_interior_fraction": "max filled inside",
-    "stem_check_top": "trunk checked up to (m)", "pole_action": "bare column (pole?)",
-    "short_action": "short object, large DBH (shrub?)",
-    "class_threshold": "ground class threshold (m)", "refine_tolerance": "ground refinement tolerance (m)",
-    "source": "ground source", "min_arc_coverage": "min arc coverage",
-    "max_relative_ci_width": "max CI width (% of DBH)", "min_inlier_ratio": "min inlier ratio",
-    "min_z": "height slice (m)",
-}
-#: the sidebar's units for the few widgets that do not show metres
-WIDGET_UNIT_NOTE = {"f_tol": "cm", "f_kernel": "cm", "f_rmax": "DBH cm", "f_ovality": "%", "f_gap": "cm"}
-
-
-def widget_label(key: str, units: DisplayUnits) -> str:
-    if key == "s_zr":
-        return "height slice (m)"
-    if key == "f_min_dbh":
-        return f"minimum DBH ({units.dl})"
-    _, param, _ = PROFILE_WIDGETS[key]
-    label = SETTING_LABELS.get(param, param)
-    return label.replace("(m)", f"({WIDGET_UNIT_NOTE[key]})") if key in WIDGET_UNIT_NOTE else label
-
-
-def profile_sections(name: str, scanner: str) -> dict[str, dict]:
-    return site_profiles.merged(name, scanner=scanner)
-
-
-def profile_widget_values(
-    name: str, units: DisplayUnits, scanner: str = site_profiles.DEFAULT_SCANNER
-) -> tuple[dict, dict]:
-    """
-    The sidebar values of site profile ``name`` with ``scanner``: ({widget key: value}, fit
-    settings that have no widget). Settings the profiles leave out get the defaults.
-    """
-    over = profile_sections(name, scanner)
-    full = {
-        "ground": {**asdict(inv.GroundParams()), **over["ground"]},
-        "segment": {**asdict(inv.SegmentParams()), **over["segment"]},
-        "fit": {**FitParams().to_dict(), **over["fit"]},
-    }
-    values = {k: conv(full[sec][param]) for k, (sec, param, conv) in PROFILE_WIDGETS.items()}
-    seg = full["segment"]
-    values["s_zr"] = (float(seg["min_z"]), float(seg["max_z"] or 15.0))
-    values["f_min_dbh"] = round(full["fit"]["min_dbh"] / (0.0254 if units.feet else 0.01), 2)
-    managed = {p for (_, p, _) in PROFILE_WIDGETS.values()} | {"min_dbh"}
-    extra = {k: v for k, v in over["fit"].items() if k not in managed}
-    return values, extra
-
-
-def _apply_profile() -> None:
-    """Callback: move the sidebar to the chosen site and scanner profiles' settings."""
-    name = st.session_state.get("profile", site_profiles.DEFAULT)
-    scanner = st.session_state.get("scanner", site_profiles.DEFAULT_SCANNER)
-    values, extra = profile_widget_values(name, U, scanner)
-    st.session_state.update(values)
-    st.session_state["profile_extra"] = extra
-
-
-def _fmt_setting(v) -> str:
-    if isinstance(v, bool):
-        return "on" if v else "off"
-    if isinstance(v, (tuple, list)):
-        return "–".join(_fmt_setting(x) for x in v)
-    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
-
-
-def _evidence_line(p) -> str:
-    mark = "✓" if p.evidence.startswith("Checked") else "◐" if p.evidence.startswith("Partly") \
-        else "★" if p.evidence.startswith("Saved") else "⚠"
-    return f"{mark} {p.evidence}"
-
-
-def sidebar_profile(units: DisplayUnits) -> None:
-    """Site and scanner profile dropdowns: set ground, segmentation and fit sliders."""
-    if "profile" not in st.session_state:  # first run: the sidebar starts at the defaults
-        st.session_state["profile"] = site_profiles.DEFAULT
-        st.session_state["scanner"] = site_profiles.DEFAULT_SCANNER
-        values, extra = profile_widget_values(site_profiles.DEFAULT, units)
-        for k, v in values.items():
-            st.session_state.setdefault(k, v)
-        st.session_state.setdefault("profile_extra", extra)
-    names = list(site_profiles.all_profiles())
-    if st.session_state["profile"] not in names:  # a saved profile was deleted
-        st.session_state["profile"] = site_profiles.DEFAULT
-    name = st.sidebar.selectbox(
-        "Site profile",
-        names,
-        key="profile",
-        on_change=_apply_profile,
-        help="Starting settings for the kind of site (tree criteria). Choosing one moves the "
-        "sliders below; adjust them afterwards if needed. Ground and segmentation changes "
-        "apply when you press **Run tree extraction**; fit changes apply at once. Profiles "
-        "you saved (Settings tab) are listed after the built-in ones.",
-    )
-    scanner = st.sidebar.selectbox(
-        "Scanner",
-        list(site_profiles.SCANNERS),
-        key="scanner",
-        on_change=_apply_profile,
-        help="What recorded the cloud. Sets how densely a trunk surface must be sampled; "
-        "the site profile scales it.",
-    )
-    site, sc = site_profiles.get(name), site_profiles.get_scanner(scanner)
-    st.sidebar.caption(site.summary)
-    st.sidebar.caption(_evidence_line(site) + ("" if scanner == site_profiles.DEFAULT_SCANNER
-                                               else f"  \nScanner: {_evidence_line(sc)}"))
-    over = profile_sections(name, scanner)
-    rows = [(SETTING_LABELS.get(k, k), v) for sec in ("ground", "segment", "fit")
-            for k, v in over[sec].items()]
-    if rows:
-        with st.sidebar.expander(f"What this profile changes ({len(rows)})"):
-            st.markdown("\n".join(f"- {lab}: **{v}**" for lab, v in rows))
-    values, _ = profile_widget_values(name, units, scanner)
-    changed = [k for k, v in values.items() if st.session_state.get(k) != v]
-    if changed:
-        c1, c2 = st.sidebar.columns([3, 2])
-        c1.caption(f"✎ {len(changed)} setting(s) changed from this profile.")
-        c2.button("↺ Reset", key="profile_reset", on_click=_apply_profile,
-                  help="Put every slider back to the chosen profiles' values.")
-        with st.sidebar.expander(f"Changed from the profile ({len(changed)})"):
-            st.markdown(
-                "| Setting | Profile | Now |\n|---|---|---|\n" + "\n".join(
-                    f"| {widget_label(k, units)} | {_fmt_setting(values[k])} | "
-                    f"{_fmt_setting(st.session_state.get(k))} |" for k in changed
-                )
-            )
 
 
 def sidebar_segmentation():
@@ -1028,160 +810,6 @@ def plot_map(df: pd.DataFrame, truth):
     return fig
 
 
-ESRI_IMAGERY = (
-    "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-)
-SATELLITE_STYLE = {
-    "version": 8,
-    "sources": {
-        "imagery": {
-            "type": "raster",
-            "tiles": [ESRI_IMAGERY],
-            "tileSize": 256,
-            "attribution": "Imagery © Esri, Maxar, Earthstar Geographics",
-        }
-    },
-    "layers": [{"id": "imagery", "type": "raster", "source": "imagery"}],
-}
-
-
-@st.cache_resource(show_spinner="Fitting the trajectory to the GNSS fixes…", max_entries=8)
-def _fit_georef(trajectory: str, gnss: str):
-    from forest_inventory_pipeline import georef
-
-    fixes = georef.read_gnss(Path(gnss))
-    t, xy = georef.read_trajectory(Path(trajectory))
-    return georef.fit_alignment(t, xy, fixes)
-
-
-def georef_rows(records, alignment) -> list[dict]:
-    """CSV-style rows (metres) of the located trees with lat, lon and position_sd_m."""
-    located = [r for r in records if r.located]
-    if not located:
-        return []
-    xy = np.array([[r.x, r.y] for r in located])
-    lat, lon = alignment.to_latlon(xy)
-    sd = alignment.position_sd(xy)
-    rows = []
-    for r, la, lo, s in zip(located, lat, lon, sd):
-        row = r.to_row("m")
-        row.update(lat=f"{la:.8f}", lon=f"{lo:.8f}", position_sd_m=f"{s:.2f}")
-        rows.append(row)
-    return rows
-
-
-def plot_satellite(rows: list[dict], satellite: bool):
-    d = pd.DataFrame(rows)
-    d["dbh"] = pd.to_numeric(d["dbh"], errors="coerce")
-    fig = go.Figure()
-    cat = map_category(d)
-    for key, style in CATEGORY_STYLE.items():
-        sub = d[cat == key]
-        if sub.empty:
-            continue
-        fig.add_trace(
-            go.Scattermap(
-                lat=sub.lat.astype(float),
-                lon=sub.lon.astype(float),
-                mode="markers",
-                name=style["label"],
-                marker=dict(
-                    size=np.clip(np.nan_to_num(sub.dbh * 40, nan=10), 9, 30), color=style["color"]
-                ),
-                text=[
-                    f"<b>Tree {r.tree_id}</b> · {style['label']}<br>"
-                    + (f"DBH {U.D(r.dbh):.1f} {U.dl}<br>" if np.isfinite(r.dbh) else "")
-                    + f"{float(r.lat):.6f}, {float(r.lon):.6f} (± {r.position_sd_m} m)"
-                    for r in sub.itertuples()
-                ],
-                hovertemplate="%{text}<extra></extra>",
-            )
-        )
-    fig.update_layout(
-        height=560,
-        margin=dict(l=0, r=0, t=30, b=0),
-        legend=dict(orientation="h", y=1.06),
-        map=dict(
-            style=SATELLITE_STYLE if satellite else "open-street-map",
-            center=dict(lat=float(d.lat.astype(float).mean()), lon=float(d.lon.astype(float).mean())),
-            zoom=17,
-        ),
-    )
-    return fig
-
-
-def georef_panel(records, seg: dict) -> None:
-    """Latitude/longitude for the trees, a satellite map, and GPX/GeoJSON for the field."""
-    from forest_inventory_pipeline import georef
-
-    key = f"georef_{seg['run_id']}"
-    with st.expander("🌍 Georeference: satellite map and GPX", expanded=key in st.session_state):
-        st.caption(
-            "For clouds in local SLAM coordinates: fit the scanner trajectory to the GNSS fixes "
-            "of the same recording (as `fip georeference`), or load the `georef.json` it wrote."
-        )
-        how = st.radio(
-            "Source",
-            ["Trajectory + GNSS", "Saved georef.json"],
-            horizontal=True,
-            key="georef_how",
-            label_visibility="collapsed",
-        )
-        try:
-            if how == "Saved georef.json":
-                path = browse("georef_file", mode="file", extensions={".json"}, pref_key="last_georef_dir")
-                if path and st.button("Use this georeference"):
-                    st.session_state[key] = georef.Alignment.load(Path(path))
-            else:
-                st.caption("Trajectory CSV (time_s, x, y), e.g. from scripts/register_rosbag_kiss_icp.py")
-                traj = browse("georef_traj", mode="file", extensions={".csv"}, pref_key="last_georef_dir")
-                st.caption("GNSS: a CSV (time_s, lat, lon) or the ROS bag with NavSatFix messages")
-                gnss = browse("georef_gnss", mode="file", extensions={".csv", ".bag", ".db3", ".mcap"},
-                              pref_key="last_georef_dir")
-                if traj and gnss and st.button("Georeference"):
-                    st.session_state[key] = _fit_georef(traj, gnss)
-        except FIPError as exc:
-            st.error(str(exc))
-        alignment = st.session_state.get(key)
-        if alignment is None:
-            return
-        rows = georef_rows(records, alignment)
-        if not rows:
-            st.info("No located trees to show.")
-            return
-        st.success(
-            f"Georeferenced: residual {alignment.rms_m:.2f} m over {alignment.n_used} fixes; "
-            f"tree positions ± {min(float(r['position_sd_m']) for r in rows):.1f}-"
-            f"{max(float(r['position_sd_m']) for r in rows):.1f} m (1 sd)."
-        )
-        sat = st.toggle(
-            "Satellite imagery",
-            True,
-            key="georef_sat",
-            help="Imagery tiles are loaded by your browser from Esri's public service (which "
-            "sees the map area you view). Off: OpenStreetMap.",
-        )
-        st.plotly_chart(plot_satellite(rows, sat), width="stretch", theme="streamlit")
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmp:
-            cols = list(rows[0])
-            written = georef.write_outputs(rows, cols, Path(tmp))
-            files = {p.name: p.read_bytes() for p in written}
-        c1, c2, c3, c4 = st.columns(4)
-        c1.download_button("Download trees.gpx (field)", files["trees.gpx"], "trees.gpx",
-                           mime="application/gpx+xml", width="stretch")
-        c2.download_button("Download GeoJSON (WGS84)", files["trees_wgs84.geojson"],
-                           "trees_wgs84.geojson", mime="application/geo+json", width="stretch")
-        c3.download_button("Download CSV (with lat/lon)", files["trees_wgs84.csv"],
-                           "trees_wgs84.csv", mime="text/csv", width="stretch")
-        c4.download_button("Download field sheet", files["field_sheet.csv"], "field_sheet.csv",
-                           mime="text/csv", width="stretch",
-                           help="One row per tree, named as in the GPX, with blank columns for "
-                           "tape DBH, 'is it a tree?' and species. Fill it in on site, then run "
-                           "`fip calibrate trees.csv field_sheet.csv`.")
-
-
 def plot_dbh_ci(df: pd.DataFrame, truth):
     d = df[~df.status.isin(NOT_MEASURED)].sort_values("dbh_d")
     d = d.assign(rank=np.arange(len(d)))
@@ -1656,62 +1284,6 @@ def settings_panel(
     profile_save_panel(gp, sp, fp)
 
 
-#: organisation standards, never part of a site profile
-NOT_IN_PROFILES = {"breast_height", "confidence", "ci_method", "model_sd", "n_bootstrap",
-                   "bootstrap_block", "seed", "large_tree_dbh"}
-
-
-def profile_overrides(gp, sp, fp) -> dict[str, dict]:
-    """The current settings that differ from the defaults, as profile sections."""
-    def diff(cur: dict, default: dict) -> dict:
-        return {k: v for k, v in cur.items() if k not in NOT_IN_PROFILES and v != default.get(k)}
-
-    return {
-        "ground": diff(asdict(gp), asdict(inv.GroundParams())),
-        "segment": diff(asdict(sp), asdict(inv.SegmentParams())),
-        "fit": diff(fp.to_dict(), FitParams().to_dict()),
-    }
-
-
-def _save_profile(gp, sp, fp) -> None:
-    name = (st.session_state.get("profile_save_name") or "").strip()
-    try:
-        site_profiles.save_user_profile(
-            name, profile_overrides(gp, sp, fp), st.session_state.get("profile_save_summary", "")
-        )
-        st.session_state["profile_save_msg"] = ("success", f"Saved profile **{name}**; it is now in "
-                                                "the *Site profile* list.")
-    except FIPError as exc:
-        st.session_state["profile_save_msg"] = ("error", str(exc))
-
-
-def profile_save_panel(gp, sp, fp) -> None:
-    st.markdown("**Save these settings as a profile**")
-    over = profile_overrides(gp, sp, fp)
-    n = sum(len(v) for v in over.values())
-    st.caption(
-        f"Stores the {n} setting(s) that differ from the defaults (not breast height, "
-        "confidence or the calibrated uncertainty) under a name of your own. It appears in the "
-        "*Site profile* list and works on the command line: `fip inventory INPUT --profile NAME`. "
-        f"Saved in `{site_profiles.user_profiles_dir()}`."
-    )
-    c1, c2 = st.columns([1, 2])
-    c1.text_input("Name", key="profile_save_name", placeholder="e.g. Old pines")
-    c2.text_input("Description (optional)", key="profile_save_summary")
-    st.button("Save as profile", on_click=_save_profile, args=(gp, sp, fp),
-              disabled=not (st.session_state.get("profile_save_name") or "").strip())
-    msg = st.session_state.pop("profile_save_msg", None)
-    if msg:
-        getattr(st, msg[0])(msg[1])
-    mine = [p for p in site_profiles.all_profiles() if p not in site_profiles.PROFILES]
-    if mine:
-        c1, c2 = st.columns([2, 1])
-        gone = c1.selectbox("Your saved profiles", mine, key="profile_delete_pick")
-        if c2.button("Delete", key="profile_delete"):
-            site_profiles.delete_user_profile(gone)
-            st.rerun()
-
-
 def calibration_panel(records, fp: FitParams):
     st.subheader("Calibrate the systematic uncertainty")
     st.markdown(
@@ -1795,6 +1367,10 @@ def main():
     if fp is not None:
         for issue in inv.check_band_inside_slice(fp, sp):
             st.sidebar.warning(issue)
+    drive_panel(
+        U,
+        {"ground": asdict(gp), "segment": asdict(sp), "fit": fp.to_dict()} if fp is not None else None,
+    )
 
     ready = (
         kind == "demo"
@@ -1888,7 +1464,7 @@ def main():
                 )
         except (AttributeError, KeyError, IndexError, TypeError):
             pass
-        georef_panel(records, seg)
+        georef_panel(records, seg, U)
         st.plotly_chart(plot_dbh_ci(df, seg.get("truth")), width="stretch", theme="streamlit")
         st.caption(
             f"Bars are {fp.confidence:.0%} confidence intervals ({fp.ci_method}). "

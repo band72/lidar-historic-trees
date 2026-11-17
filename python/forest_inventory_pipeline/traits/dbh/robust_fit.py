@@ -145,6 +145,9 @@ class FitParams:
     #: short_min_dbh m or more, each with under flag_max_crown_share of the material around
     #: it. Actions: "flag" (a warning for the reviewer), "reject", or "off". A vehicle lidar
     #: cannot tell a pole from a tall trunk whose crown is above its view, so the default flags.
+    #: warn when the ground under a stem is more than this (m) above or below the median of the
+    #: ground within 3 m of it: breast height is then measured from the wrong level. 0 = off.
+    ground_check_tolerance: float = 0.5
     pole_action: str = "flag"
     pole_min_top: float = 4.0
     short_action: str = "flag"
@@ -234,6 +237,7 @@ class FitParams:
                 getattr(self, name) in ("flag", "reject", "off"),
                 f"{name} must be flag, reject or off, got {getattr(self, name)!r}",
             )
+        require(0.0 <= self.ground_check_tolerance <= 10.0, "ground_check_tolerance must be in [0, 10] m")
         require(2.0 <= self.pole_min_top <= 40.0, "pole_min_top must be in [2, 40] m")
         require(1.5 <= self.short_max_top <= 10.0, "short_max_top must be in [1.5, 10] m")
         require(0.0 <= self.short_min_dbh <= 3.0, "short_min_dbh must be in [0, 3] m")

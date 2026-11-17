@@ -30,6 +30,7 @@ independently (slow stages re-run only when their own parameters change).
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -41,6 +42,16 @@ from scipy.spatial import KDTree
 from . import exclusions
 from .errors import FitError, InputDataError, ParameterError, StageError
 from .structures import OverheadIndex
+from .guards import (  # noqa: F401  (part of this module's interface)
+    BYTES_PER_POINT,
+    _file_extent,
+    _las_crs,
+    available_memory_bytes,
+    check_memory,
+    peak_memory_bytes,
+    separate_frames,
+)
+from .rejections import REJECTION_REASONS, rejection_summary  # noqa: F401
 from .plugins import ExportContext, load_plugins, registry
 from .preprocess.height_normalization import interpolate_ground_z
 from .records import (
@@ -177,122 +188,6 @@ class LoadedCloud:
     crs: str | None
     crs_wkt: str | None
     sources: list[str]
-
-
-def _file_extent(path: Path, data) -> tuple[float, float, float, float] | None:
-    """A file's whole XY extent (file units): the LAS header (even when cropped while
-    reading), else the points as read."""
-    if path.suffix.lower() in (".las", ".laz"):
-        try:
-            import laspy
-
-            with laspy.open(str(path)) as fh:
-                lo, hi = fh.header.mins, fh.header.maxs
-            return float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1])
-        except Exception:
-            pass
-    if data is None or data.xyz is None or len(data.xyz) == 0:
-        return None
-    lo, hi = data.xyz[:, :2].min(axis=0), data.xyz[:, :2].max(axis=0)
-    return float(lo[0]), float(lo[1]), float(hi[0]), float(hi[1])
-
-
-def _las_crs(path: Path) -> str | None:
-    try:
-        import laspy
-
-        from .crs import from_las_header
-
-        with laspy.open(str(path)) as fh:
-            info = from_las_header(fh.header)
-        return info.crs or info.wkt or None
-    except Exception:
-        return None
-
-
-def separate_frames(extents) -> None:
-    """
-    Refuse several files that look like separate SLAM/odometry runs, each in its own frame.
-
-    A run stitched by lidar odometry (KISS-ICP, FAST-LIO, ...) is in local coordinates with
-    the origin at its first scan, and declares no coordinate system. Several such files loaded
-    together stack unrelated places on top of each other (2022-03-08: six drive segments,
-    233 M points, extent 556 x 305 m, and an out-of-memory kill). So when two or more files
-    have no coordinate system and every one's extent contains the origin, loading stops.
-
-    :param extents: [(path, (xmin, ymin, xmax, ymax) or None, crs or None)]
-    :raises InputDataError: with what to do instead.
-    """
-    if len(extents) < 2 or any(crs for _, _, crs in extents):
-        return
-    def has_origin(e):
-        return e is not None and e[0] <= 1.0 and e[2] >= -1.0 and e[1] <= 1.0 and e[3] >= -1.0
-
-    if all(has_origin(e) for _, e, _ in extents):
-        names = ", ".join(p.name for p, _, _ in extents[:4]) + (" ..." if len(extents) > 4 else "")
-        raise InputDataError(
-            f"{len(extents)} files ({names}) each have their own coordinates starting at "
-            "(0, 0) and no coordinate system: they look like separate SLAM/KISS-ICP runs, "
-            "which do not line up. Process each file on its own, then combine the results "
-            "with `fip georeference` and `fip merge`. If they really share one frame, use "
-            "--same-frame (command line)."
-        )
-
-
-#: peak memory of the stages per input point (bytes). 2022-03-08 drive: 6.9 GB for 44 M points
-#: (157 B); a 233 M point run was killed while clustering, holding 40.6 GB and having asked
-#: for 51 GB (219 B): the peak lies above that, so the estimate uses 220
-BYTES_PER_POINT = 220
-
-
-def available_memory_bytes() -> int | None:
-    """Memory available to new allocations (Linux /proc/meminfo, Windows API); None if unknown."""
-    import sys
-
-    try:
-        if sys.platform.startswith("linux"):
-            with open("/proc/meminfo", encoding="ascii") as fh:
-                for line in fh:
-                    if line.startswith("MemAvailable:"):
-                        return int(line.split()[1]) * 1024
-        elif sys.platform == "win32":
-            import ctypes
-
-            class MEMORYSTATUSEX(ctypes.Structure):
-                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
-                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
-                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
-                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
-                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
-
-            st = MEMORYSTATUSEX()
-            st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
-                return int(st.ullAvailPhys)
-    except (OSError, ValueError, AttributeError):
-        return None
-    return None
-
-
-def check_memory(n_points: int) -> None:
-    """
-    Stop before processing ``n_points`` when the estimated peak cannot fit in the memory
-    available now (instead of being killed by the system minutes later).
-
-    :raises InputDataError: with the estimate, the memory available, and what to do instead.
-    """
-    free = available_memory_bytes()
-    if free is None:
-        return
-    need = n_points * BYTES_PER_POINT
-    if need > free:
-        gb = 1e9
-        raise InputDataError(
-            f"{n_points / 1e6:.0f} M points need about {need / gb:.0f} GB of memory, but only "
-            f"{free / gb:.0f} GB is available. Process fewer files at once (e.g. one segment), "
-            "crop the cloud (--crop), or process it in tiles (command line: --tile 100). "
-            "Closing other programs frees memory too. To run anyway: --no-memory-check."
-        )
 
 
 def expand_inputs(paths: str | Path | Sequence[str | Path]) -> list[Path]:
@@ -795,6 +690,26 @@ def split_multi_stem(
     return out, parent
 
 
+def ground_offset(ground: np.ndarray, ground_tree, x: float, y: float, gz: float) -> float:
+    """
+    The ground level used for a stem (``gz``) minus the level of the ground around it: the
+    plane fitted (least absolute deviations, so slopes are followed and outliers ignored)
+    through the ground points within 3 m, evaluated at the stem. NaN with under 20 points.
+    """
+    idx = ground_tree.query_ball_point([x, y], 3.0)
+    if len(idx) < 20:
+        return float("nan")
+    if len(idx) > 4000:
+        idx = np.asarray(idx)[np.linspace(0, len(idx) - 1, 4000).astype(int)]
+    g = ground[idx]
+    A = np.c_[g[:, 0] - x, g[:, 1] - y, np.ones(len(g))]
+    w = np.ones(len(g))
+    for _ in range(5):  # iteratively reweighted: approximates the L1 plane
+        coef, *_ = np.linalg.lstsq(A * w[:, None], g[:, 2] * w, rcond=None)
+        w = 1.0 / np.sqrt(np.maximum(np.abs(g[:, 2] - A @ coef), 0.02))
+    return float(gz - coef[2])
+
+
 def process_cloud(
     xyz: np.ndarray,
     classification: np.ndarray | None,
@@ -868,10 +783,14 @@ def fit_trees(
     progress: ProgressFn | None = None,
     keep_points: bool = True,
     overhead: OverheadIndex | None = None,
+    workers: int | None = None,
 ) -> list[TreeRecord]:
     """
     Fit every tree. One tree failing never aborts the run: its record gets
     ``status='failed'`` and the reason in ``message``.
+
+    :param workers: threads for the stem fits (None = up to 8, one per core). Each tree has
+        its own random stream (seeded by its id), so the results do not depend on it.
 
     :param overhead: the height-normalized cloud above the stems (``OverheadIndex``); with
         it, posts under a roof are rejected (``fit.reject_roof_posts``).
@@ -890,23 +809,43 @@ def fit_trees(
     records: list[TreeRecord] = []
     t0 = time.perf_counter()
     n = len(trees)
-    for i, (tid, pts) in enumerate(sorted(trees.items())):
-        if progress:
-            progress(i / max(n, 1), f"fitting tree {tid} ({i + 1}/{n})")
+    items = sorted(trees.items())
+
+    def _fit(item):
+        tid, pts = item
+        try:
+            return fit_stem(pts, fit, seed_offset=tid), ""
+        except FitError as exc:
+            return None, str(exc)
+        except Exception as exc:  # unexpected numeric failure: log with traceback, keep going
+            logger.exception(f"tree {tid}: unexpected error during fit")
+            return None, f"internal error: {type(exc).__name__}: {exc}"
+
+    # the fits are independent and spend their time in numpy (which releases the GIL)
+    n_workers = max(1, min(workers or 8, os.cpu_count() or 1, n or 1))
+    if n_workers > 1:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(n_workers) as pool:
+            fits = []
+            for i, res in enumerate(pool.map(_fit, items)):
+                fits.append(res)
+                if progress:
+                    progress(i / max(n, 1), f"fitting trees ({i + 1}/{n})")
+    else:
+        fits = []
+        for i, item in enumerate(items):
+            if progress:
+                progress(i / max(n, 1), f"fitting tree {item[0]} ({i + 1}/{n})")
+            fits.append(_fit(item))
+
+    for (tid, pts), (sf, reason) in zip(items, fits):
         # provisional position: centroid of band points (or all points)
         band = pts[np.abs(pts[:, 2] - fit.breast_height) <= fit.band_half_width]
         ref = band if len(band) else pts
         cx, cy = float(np.median(ref[:, 0])), float(np.median(ref[:, 1]))
-        try:
-            sf = fit_stem(pts, fit, seed_offset=tid)
+        if sf is not None:
             cx, cy = sf.center_x, sf.center_y
-        except FitError as exc:
-            sf = None
-            reason = str(exc)
-        except Exception as exc:  # unexpected numeric failure: log with traceback, keep going
-            logger.exception(f"tree {tid}: unexpected error during fit")
-            sf = None
-            reason = f"internal error: {type(exc).__name__}: {exc}"
         if sf is not None and overhead is not None and fit.reject_non_stems and fit.reject_roof_posts:
             rc = overhead.roof(sf.center_x, sf.center_y, sf.radius, fit.breast_height + 0.5, seed=tid)
             if rc is not None:
@@ -962,6 +901,16 @@ def fit_trees(
             ),
         )
         rec.extra["cluster_id"] = parents.get(tid, tid)
+        if sf is not None:
+            off = ground_offset(ground, ground_tree, cx, cy, gz)
+            rec.extra["ground_offset_m"] = round(off, 2) if np.isfinite(off) else ""
+            tol = fit.ground_check_tolerance
+            if tol > 0 and np.isfinite(off) and abs(off) > tol:
+                sf.warnings.append(
+                    f"ground under this stem is {abs(off):.1f} m {'below' if off < 0 else 'above'} "
+                    "the ground around it (within 3 m): breast height, and so the DBH, may be "
+                    "taken at the wrong level"
+                )
         if sf is None and parents.get(tid, tid) != tid:
             # an extra stem split off a cluster that does not fit is a branch/clutter fragment
             logger.debug(f"split stem {tid} (cluster {parents[tid]}) dropped: {reason}")
@@ -1116,49 +1065,6 @@ def apply_additions(
         else:
             out.append(r)
     return out
-
-
-#: rejection reasons: (reason, words in the message, the setting to try)
-REJECTION_REASONS = (
-    ("under a roof (post)", "under a roof", "Reject posts under a roof (Trunk check)"),
-    ("bare column rejected (pole?)", "rejected: bare column", "Pole and shrub checks"),
-    ("short object rejected (shrub?)", "rejected: only", "Pole and shrub checks"),
-    ("lean beyond the limit", "tilt", "Max stem tilt (Fitting details)"),
-    ("too few points at breast height", "in the breast-height band", "Band half-width; Min points per tree"),
-    ("fitted DBH outside the limits", "fitted radius", "Max DBH (Fitting details)"),
-    ("below the minimum DBH", "below the minimum", "Minimum DBH (Trunk check)"),
-    ("too little of the cluster on the trunk", "lie on the trunk surface", "Share of points on the trunk (Trunk check)"),
-    ("trunk not continuous", "continuous over", "Trunk checked up to (Trunk check)"),
-    ("filled inside (foliage)", "fill the inside", "Max. share of points filling the inside (Trunk check)"),
-    ("too low (shrub or stump)", "only reaches", "Must reach above breast height (Trunk check)"),
-    ("point density too low", "points per m^2", "Min. points per m² (Trunk check), or the Scanner profile"),
-    ("few breast-height points on the circle", "breast-height points on the fitted surface", "Min. points per m²; the cluster may be clutter"),
-    ("seen from one side, cluttered", "seen from one side", "none: rejected as clutter, structures or several stems"),
-    ("flat strip (wall, fence)", "strip is flat", "none: not a stem"),
-    ("no circle found", "no circle", "Max DBH; Inlier tolerance"),
-)
-
-
-def rejection_summary(records: Sequence[TreeRecord]) -> list[dict]:
-    """
-    Why objects were rejected (status ``failed``): one row per reason, most common first:
-    ``{"reason", "count", "setting"}``. An object rejected for several reasons counts under
-    each; a message matching no known reason counts as "other".
-    """
-    counts: dict[str, int] = {}
-    for r in records:
-        if r.status != STATUS_FAILED:
-            continue
-        hit = [name for name, words, _ in REJECTION_REASONS if words in r.message]
-        if hit and hit[0] in ("bare column rejected (pole?)", "short object rejected (shrub?)"):
-            hit = hit[:1]  # "rejected: only 2.6 m tall" is not also "only reaches"
-        for name in hit or ["other"]:
-            counts[name] = counts.get(name, 0) + 1
-    setting = {name: s for name, _, s in REJECTION_REASONS} | {"other": "see the message in the table"}
-    return [
-        {"reason": k, "count": v, "setting": setting[k]}
-        for k, v in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    ]
 
 
 def summarize(records: Sequence[TreeRecord]) -> dict:

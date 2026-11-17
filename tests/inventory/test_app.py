@@ -27,7 +27,7 @@ def metric(at, label):
 
 def test_demo_run_and_live_slider(app):
     app.sidebar.number_input[0].set_value(10)  # trees in demo plot
-    app.button[0].click().run()
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
     assert not app.exception and not app.error
     assert metric(app, "Trees fitted").value.split(" / ")[0] != "0"
     wide = metric(app, "Median CI width").value
@@ -44,7 +44,7 @@ def test_prompt_before_first_run(app):
 
 def test_feet_display(app):
     app.sidebar.number_input[0].set_value(8)
-    app.button[0].click().run()
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
     units = next(s for s in app.sidebar.button_group if s.label == "Display & export units")
     units.set_value("ft").run()
     assert not app.exception and not app.error
@@ -56,7 +56,7 @@ def test_feet_display(app):
 
 def test_complete_partial_toggle(app):
     app.sidebar.number_input[0].set_value(8)
-    app.button[0].click().run()
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
     toggle = next(t for t in app.sidebar.toggle if t.label == "Complete partly seen stems")
     assert toggle.value is False
     toggle.set_value(True).run()
@@ -281,9 +281,34 @@ def test_changed_settings_table_and_keyed_controls(app):
 
 
 def test_too_little_memory_is_reported_before_processing(app, monkeypatch):
-    from forest_inventory_pipeline import inventory as inv
+    from forest_inventory_pipeline import guards
 
-    monkeypatch.setattr(inv, "available_memory_bytes", lambda: 2**20)  # 1 MB free
+    monkeypatch.setattr(guards, "available_memory_bytes", lambda: 2**20)  # 1 MB free
     app.sidebar.number_input[0].set_value(8)
     next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
     assert any("memory" in e.value for e in app.error), [e.value for e in app.error]
+
+
+def test_whole_drive_panel_makes_one_map(app, tmp_path):
+    from test_drive import _segment  # two synthetic segments, 150 m apart
+
+    import numpy as np
+
+    from forest_inventory_pipeline import georef
+
+    d = tmp_path / "drive"
+    d.mkdir()
+    parts = [_segment(d, "segment_0-60s", 1, 0.0, 0.0), _segment(d, "segment_100-160s", 2, 100.0, 150.0)]
+    t = np.concatenate([p[0] for p in parts])
+    en = np.vstack([p[1] for p in parts])
+    lat, lon, _ = georef.enu_to_geodetic(np.column_stack([en, np.zeros(len(en))]), 30.08, -83.09, 0.0)
+    np.savetxt(tmp_path / "gnss.csv", np.column_stack([t, lat, lon]), delimiter=",",
+               header="time_s,lat,lon", comments="", fmt="%.9f")
+    app.text_input(key="drive_dir_typed").set_value(str(d)).run()
+    assert any("2 segments" in c.value for c in app.caption)
+    app.text_input(key="drive_gnss_typed").set_value(str(tmp_path / "gnss.csv")).run()
+    next(b for b in app.button if b.label == "Run whole drive").click().run()
+    assert not app.exception and not app.error, [e.value for e in app.error]
+    assert any("one map" in s.value for s in app.success)
+    assert any(b.label.startswith("Download trees_merged.gpx") for b in app.get("download_button"))
+    assert (d / "drive_output" / "merged" / "trees_merged_wgs84.csv").exists()

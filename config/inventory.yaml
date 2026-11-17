@@ -49,6 +49,7 @@ fit:
   roof_layer_fraction: 0.2     # share of the points near the best plane above the stem that lie on it (3 cm)
   roof_min_span: 0.3           # share of the 1.5 m disc around the stem the plane covers
   large_tree_dbh: 0.5          # large_tree = yes at this DBH (m) or more
+  ground_check_tolerance: 0.5  # warn when the ground under a stem is this far (m) from the ground around it; 0 = off
   pole_action: flag            # bare column (pole, snag, or trunk with its crown out of view): flag, reject, off
   pole_min_top: 4.0            # ... seen to at least this height (m)
   short_action: flag           # short object with a large "DBH" (shrub, small tree's crown): flag, reject, off

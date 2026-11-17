@@ -302,6 +302,7 @@ These sliders update every result instantly.
 ### The main area
 
 - **Summary**: trees fitted, mean DBH, basal area per hectare, and the median CI width. For the demo plot it also shows the RMSE and CI coverage against the true values.
+- **🚗 Whole drive: several segments into one map** (at the top, usable before any run): for a drive stitched in segments. Choose the folder holding the segment files (each with its `<name>_trajectory.csv`) and the drive's GNSS file; every segment is measured with the sidebar's current settings, given latitude and longitude, and merged into one map, shown on satellite imagery with the GPX, field sheet and CSV to download. It is the app form of [`fip drive`](#fip-drive). Segments must not be opened together as one cloud: each has its own coordinates.
 - **💾 Save results to a folder**: choose an output folder (it starts next to your input file), a name for the run's subfolder (default `<file>_inventory`) and the formats, then press **Save results**. This writes CSV, DXF, GeoJSON, the segmented points, `run.json` and, when the CRS is known, `trees.prj`. It is the same set of files `fip inventory` writes.
 - **Map**: tree positions sized by DBH. Status is shown by color, shape and label together (✔ ok, ⚠ warning, ◬ DBH lower bound, ◇ check: pole or shrub?, ✖ failed, ⊘ excluded, ✚ added by reviewer). Hover for details, and click a tree to select it. Below it, **🌍 Georeference** puts the trees on a satellite map and gives the GPX, GeoJSON, CSV and [field sheet](#field-check) for the field (see [`fip georeference`](#fip-georeference)).
 - Below the map is a **DBH chart**: every tree's DBH with its confidence interval.
@@ -401,7 +402,7 @@ The cloud's extent is divided into square tiles of `SIZE` m. Each tile is proces
 - **Tiled results are close to, not identical with, an untiled run.** The ground filter fits its cloth to the extent it is given, so each tile's ground model differs from the whole cloud's: by a few mm for most trees, but by 1.1-1.9 m under three trees of the test segment (for the one checked, the untiled run was the wrong one). The DBH of messy, one-sided stems responds to such changes: several changed by 7-23 cm at the same position. On segment 360-480 s of the test drive (45 M points, 60 m tiles): peak memory 6.9 GB → 3.9 GB, run time 2:41 → 4:19 (buffers are processed twice); 88 of the 107 untiled trees matched within 0.3 ft and 1 cm of DBH, 103 trees in total. The differences were spread over the tiles, not at their edges, so the overlap is not the cause. Use the largest tiles memory allows, and check trees whose `ground_z` differs from their neighbours'.
 - **Tile edges.** Each tile also keeps the trees fitted up to 0.5 m outside its core, and records of different tiles within 0.5 m (or a stem radius) of each other are one tree, so a stem on an edge is kept exactly once even when the two tiles place it slightly differently.
 - **Errors.** A tile with nothing to measure (only an edge of the cloud, open ground) is skipped and listed in `run.json`. Anything else in a tile (out of memory, a read error) stops the run, naming the tile, rather than giving a partial result; for out of memory, use a smaller `--tile`.
-- **A drive** is still best processed in segments (one KISS-ICP run each, georeferenced separately) and merged with [`fip merge`](#fip-merge): separate segments limit odometry drift and GNSS alignment errors to each segment.
+- **A drive** is still best processed in segments (one KISS-ICP run each, georeferenced separately) and merged, in one go with [`fip drive`](#fip-drive): separate segments limit odometry drift and GNSS alignment errors to each segment.
 
 ### `fip app`
 
@@ -447,6 +448,16 @@ It fits a 2D rotation and shift (no scale; lidar odometry is metric) from the tr
 Accuracy is that of the GNSS. Standalone fixes (no RTK) are good to about ±1 m, and the offset between the GNSS antenna and the lidar (not modelled) adds to that. The fit's residual RMS shows how well the run's shape matches the GNSS track. It cannot reveal a constant GNSS bias. Heights are not georeferenced.
 
 The app does the same on the **Map** tab (*Georeference: satellite map and GPX*): choose the trajectory and the GNSS file (or a `georef.json`), and the trees are shown on satellite imagery (tiles loaded by your browser from Esri's public service; OpenStreetMap when switched off), with the GPX, GeoJSON, CSV and field sheet to download.
+
+### `fip drive`
+
+A whole drive in one command: every segment measured on its own, georeferenced, and merged.
+
+```bash
+fip drive drive_folder/ -g drive.bag -o drive_output --profile "Roadside / Farmstead"
+```
+
+`drive_folder/` holds the segments as written by `scripts/register_rosbag_kiss_icp.py`: each point cloud (`segment_0-120s.laz`) with its trajectory next to it (`segment_0-120s_trajectory.csv`). For each segment it runs `fip inventory` and `fip georeference` into `drive_output/<segment>/`, then `fip merge` into `drive_output/merged/` (the files described below). A segment that fails or has no trees is reported and skipped. Options: `-c` settings file, `--profile`, `--scanner`, `--output-units`, `--gnss-topic`, `--distance` (merge distance).
 
 ### `fip merge`
 
@@ -622,7 +633,7 @@ Or open the web app with `fip app`, choose the LAZ file, and run it from there.
 
 **7. Optional: latitude/longitude and one map for the whole drive**
 
-If the bag also recorded GNSS (`sensor_msgs/NavSatFix`), georeference each segment with its trajectory, then merge the segments:
+If the bag also recorded GNSS (`sensor_msgs/NavSatFix`), `fip drive out/ -g drive.bag -o out/drive` does steps 6 and 7 for every segment in the folder in one go. By hand: georeference each segment with its trajectory, then merge the segments:
 
 ```bash
 fip georeference out/inventory_0-120s/trees.csv -t out/segment_0-120s_trajectory.csv -g drive.bag
@@ -663,6 +674,7 @@ Lengths are in the output unit named in the `length_unit` column: metres by defa
 | `message` | Warnings or the reason a fit failed |
 | `cluster_id` | Segmentation cluster (differs from `tree_id` when merged trees were split apart) |
 | `large_tree` | `yes` when the DBH is at least `fit.large_tree_dbh` (default 0.5 m, about 20 in) |
+| `ground_offset_m` | The ground level used for this stem minus the level of the ground around it (a plane through the ground points within 3 m, so slopes are followed). Beyond ±0.5 m (`fit.ground_check_tolerance`) the tree gets a `warning`: breast height, and so the DBH, may be taken at the wrong level. On the test drive, 3 of 107 trees of one segment (one 1.7 m off); the rest within 0.31 m |
 | `crown_share` | Share of the material 2.5 m and higher within 3 m of the stem that lies away from the stem column: 0.5-0.9 under a crown, near 0 for a bare column (a pole, a dead snag, or a trunk whose crown is above the scanner's view) |
 | `visible_height_m` | Top of what the scanner saw above the stem (99th percentile within 1 m of it), in metres. A vehicle lidar often cannot see crown tops, so this is a lower bound on tree height, not the height |
 | `exclusion_reason` | The reviewer's reason for an `excluded` or `added` tree |
@@ -707,6 +719,7 @@ Every point of every tree, at its **real elevation**, with extra dimensions `tre
 
 Every run also writes:
 - **`run.json`**: the software version, time, input files, input and output units, CRS, all parameters, the result summary, and every output file with its size and SHA-256 checksum, so a result can be traced and verified later
+  Under `parameters` it also records `points`, `peak_memory_gb` and `peak_bytes_per_point` (the run's actual memory use; the test drive: 160 bytes per point), and for tiled runs the tiles.
 - **`trees.prj`**: the coordinate system as WKT (when known), which lets GIS software place `trees.csv` and the DXF correctly
 
 ### CSV options
@@ -784,100 +797,19 @@ On synthetic plots with known truth (5 plots × 30 trees): all 150 trees found, 
 
 ### Tested on real data
 
-The pipeline has been run on a real drive at a rural site in north Florida (about 30.0818° N, 83.0944° W; standalone GNSS, no RTK, so about ±1 m), recorded from a vehicle-mounted Ouster 64-beam lidar and stitched with the included KISS-ICP script: first one 2-minute segment ([files and images](docs/real_data/2022-03-08_ouster_segment/README.md)), then the whole 11-minute drive in six segments, merged into one map of **260 trees** ([results](docs/real_data/2022-03-08_drive/README.md)). No field DBH exists yet, so these are plausibility checks, not accuracy figures. What image review of the results changed:
+The pipeline has been run on a real 11-minute drive at a rural site in north Florida (vehicle-mounted Ouster 64-beam lidar, standalone GNSS), stitched in six segments and merged into one map of **260 trees**. No field DBH exists yet, so these are plausibility checks, not accuracy figures. Image review of the results is what shaped the trunk check, the roof check, the lower-bound DBH for narrow strips, and the merging of segments.
 
-- **The trunk check.** Without it, 227 of 308 clusters on the first segment were "measured", most of them shrubs, posts, walls and scatter.
-- **Roof posts.** A row of 16 evenly spaced objects under a flat layer was taken for a planted row of trees with low crowns (the check zone was made to end at the crown base to keep them). The site owner confirmed it is an **open shed**, 40 m long; with carports and porches, 36 of the first segment's 53 "trees" were posts. The roof check rejects them (a smooth plane over the post; 28-60 % of the layer on it, against 8-12 % for trees), leaving 8 trees on that segment. A sample of rejections away from the shed was all posts.
-- **Narrow strips of stems.** Seen through a fence or between stems, a strip of a 20-35 cm trunk fitted an 80-130 cm circle, or a 55° "lean". These trees are now kept with the visible width as a lower-bound DBH (`dbh_method` *visible width (lower bound)*).
-- **Merging segments.** The segments' separate GNSS alignments disagreed by 1-2.5 m (more where GNSS was weak under the trees); tying them together on the trees they share brought 33 of the 39 trees seen twice to within 0.36 m.
-- Also: a realistic convergence test (the iteration-limit warning had fired on 71 % of trees), 7.4 GB instead of 16.7 GB for 45 M points, and Ouster "no return" pixels dropped by the bag reader.
+**[Findings, images and the to-do list →](docs/real_data/README.md)**
 
-The whole drive, georeferenced and merged (UTM 17N); the trees line the farm roads:
-
-<img src="docs/real_data/2022-03-08_drive/drive_map.png" width="420" alt="Merged map of the whole drive: 260 trees along the routes of six segments"/>
-
-**The shed** that was taken for a row of trees (side view along it, and top views at breast height and at roof height), and **objects the roof check rejects** away from it (porch, carport and shed posts):
-
-<img src="docs/real_data/2022-03-08_ouster_segment/shed_row_side_view.png" width="750" alt="Side and top views of the open shed: posts under one continuous roof"/>
-
-<img src="docs/real_data/2022-03-08_ouster_segment/roof_posts_rejected.png" width="420" alt="Side views of posts rejected by the roof check"/>
-
-**The DXF export.** `trees.dxf` draws each tree as a DBH circle with its confidence-interval rings, its centre point and a label (tree number, DBH, interval; `>=` for a lower-bound DBH), on separate layers (`FIP_DBH`, `FIP_DBH_WARN`, `FIP_CI`, `FIP_LABEL`, `FIP_ADDED` for reviewer-added trees, ...). How it looks in a CAD program, from an earlier export:
-
-<img src="docs/real_data/2022-03-08_ouster_segment/dxf_in_cad_example.png" width="700" alt="An earlier DXF export opened in a CAD program, 2D wireframe"/>
-
-A close-up of an earlier run's DXF, on the shed posts (then still taken for trees): labels give tree number, DBH and its 95 % interval; the cyan band is the interval between the two CI rings.
-
-<img src="docs/real_data/2022-03-08_ouster_segment/dxf_after_trunk_check_zoom.png" width="657" alt="Zoomed DXF from an earlier run, on the shed posts"/>
-
-**Breast-height slice from above, before the trunk check and after the first trunk check** (before the roof check, so many of the accepted circles on the left of the right image are shed and carport posts). Points 1.0-1.6 m above ground, coloured by cluster, with fitted DBH circles in white; local coordinates, route top to bottom, forest edge on the right.
-
-| Before: 227 clusters measured | After the first trunk check: 53 |
-|---|---|
-| <img src="docs/real_data/2022-03-08_ouster_segment/before_trunk_check_overview.png" width="380" alt="Overview before the trunk check"/> | <img src="docs/real_data/2022-03-08_ouster_segment/accepted_overview.png" width="380" alt="Overview after the first trunk check"/> |
-
-#### To do: real-data fixtures and results
-
-Shed fixture and object fixtures (`tests/data/shed_row_2022-03-08.laz`, `tests/data/real_objects_2022-03-08.npz`):
-
-- [ ] Add the objects flagged for review on the whole drive (6 possible poles, 4 possible shrubs) to `real_objects_2022-03-08.npz` once their identity is confirmed in the field, and pin their outcome in `test_real_objects.py`.
-- [ ] Add roof types not yet seen: flat metal roofs, roofs steeper than about 37° (the plane search ignores them), and a tree growing through or beside a roof (it must stay a tree).
-- [ ] Add a free-standing pole and a tall bare trunk (an old pine with a high crown) side by side, to test whether anything can tell them apart when the scanner's trajectory is known.
-
-Whole-drive results (`docs/real_data/2022-03-08_drive/`):
-
-- [ ] **Field check**: walk `trees_merged.gpx`, fill in `field_sheet.csv` (tape DBH, is it a tree), then `fip calibrate trees_merged_wgs84.csv field_sheet.csv`. Publish the DBH bias, RMSE, interval coverage and false-positive rate here: so far there are no accuracy figures for real data.
-- [ ] Settle the flagged objects (poles, shrubs) and the 10 lower-bound trees on site; save the decisions as `exclusions.json` and reapply them with `--exclusions`.
-- [ ] Check whether DBH is overestimated for trees seen from one side (some circles looked larger than their trunks in side views).
-- [ ] Improve the two weak segments (240-480 s, GNSS residuals 1.6 and 2.7 m): loop closure in the KISS-ICP stitching or RTK, instead of relying on the tie between segments.
-- [ ] Process a segment **inside** the forest, where stems are seen from several sides, and check the untested profiles there (*Clear Forest*, *Shrubs*) and the non-vehicle scanner profiles on their own data.
-- [ ] Check `--tile` on a whole-drive cloud stitched as one (memory, run time, and the trees against an untiled run).
-- [ ] Share one ground model across tiles (e.g. ground filtered once on a thinned copy of the whole cloud), so tiled results no longer depend on the tile size: today 88 of 107 trees were identical on a real segment, the rest moved with the ground model.
+<img src="docs/real_data/2022-03-08_drive/drive_map.png" width="360" alt="Merged map of the whole drive: 260 trees along the routes of six segments"/>
 
 ### Stems that are only partly visible
 
-When the scan sees only one side of a trunk, the program still measures it, says how much of the circumference it saw (`arc_coverage`), **flags it as a `warning`**, and **widens its interval**.
+When the scan sees only one side of a trunk, the program still measures it, says how much of the circumference it saw (`arc_coverage`), **flags it as a `warning`** below 60 %, and **widens its interval** for the part it could not see. A round stem is measured well even from half its circumference (0.1-0.2 cm error in simulation); a stem that is not round cannot be recognised from one side and can be off by more than 10 %. With `--complete-partial` (app: *Complete partly seen stems*), a flagged stem is also measured over a taller window, where a moving scanner may have seen other sides.
 
-`arc_coverage` counts as unseen only the gaps wider than those that randomly spaced points leave anyway, so a sparse stem seen all round still reads close to 100 % (and is not flagged), while a stem seen from one side, or from two opposite sides, reads about 50 %.
+What to do: scan from at least two sides where you can; review the flagged trees (filter by `warning`, or sort by `arc_coverage`); and tape-measure some of them for [calibration](#9-calibrating-the-confidence-interval).
 
-**What happens to the measurement.** The program fits a circle to the arc it can see. For a round stem that works well even from half the circumference. A stem that is not round cannot be recognised from one side, and the fit then reflects the *local curvature*: too small if the scanner sees the flat side of an oval, too large if it sees its narrow end. Simulations on synthetic stems with known diameter:
-
-| Stem seen | Round stem, DBH error | Oval stem (44 × 36 cm), DBH error |
-|---|---|---|
-| All the way round | 0.03 cm | +0.1 cm |
-| About three quarters (270°) | 0.03 cm | about 5 % low |
-| About half (180°) | 0.1-0.2 cm | **13 % low or 17 % high**, depending on which side faces the scanner |
-| Under 40 % (120° or less) | 0.1-0.7 cm | not simulated |
-
-**What the program does about it.**
-
-- **Flag:** any stem whose scanned arc covers less than 60 % of the circumference (`fit.min_arc_coverage`, default 0.6, so half-visible stems are flagged) gets status `warning`, with a message such as *"low arc coverage (53 %): stem seen from one side; DBH assumes a round stem, interval widened by ±3.1 cm for possible non-roundness"*.
-- **Widen:** the interval includes an allowance for the part of the stem that was not seen: `view_sd = ovality_sd × DBH × 3 × (1 − arc_coverage)`, which is zero for a stem seen all round. `fit.ovality_sd` (default 0.03, i.e. 3 %) is the assumed non-roundness of your stems, (long − short) / (long + short). The allowance is added to the measurement uncertainty, and the CSV has it as the `view_sd` column. The measured DBH itself never changes.
-- **Check, and what it does and doesn't prove:** on simulated stems that really are 3 % oval, in random orientation, the 95 % interval contains the true diameter in essentially 100 % of cases at 270°, 180° and 120°; before this allowance it held only 57 % of the time at 180° and 38 % at 120°. At 6 % ovality (twice the assumption) it holds about 100 % at 270°, 90-99 % at 180° and 70-82 % at 120° (repeated simulations differ by a few percent). **These figures show the method is consistent with its own assumptions:** the factor 3 and the 3 % were chosen on the same kind of simulated stems the check uses. They do not show that real stems are 3 % oval, or that the intervals hold on your data. Only [calibration](#9-calibrating-the-confidence-interval) against tape-measured trees can show that. At the assumed ovality the intervals are, if anything, a little wider than needed (about 100 % instead of the nominal 95 %).
-
-**Optional: complete partly seen stems (`fit.complete_partial_stems`, `--complete-partial`).** DBH is always the diameter of the full circle through the visible arc, never the width of the visible part. This setting goes further and tries to see more of the circle. For every stem that is flagged for low arc coverage, or that has too few points at breast height to be measured at all, the program widens the measurement window in 0.1 m steps (up to `fit.max_band_half_width`, default ±0.75 m around breast height) until about 85 % of the circumference has been seen, then refits. This helps when the scanner moved, so that other heights show other sides of the stem. The taller fit includes a **taper term**, so the result is still the diameter *at breast height* and a window that isn't centred (the segmentation slice starts at 1.0 m) doesn't bias it.
-
-Simulated stems (60 per row, a 120°-wide view that turns 120° per metre of height, points only above 1.0 m, 0.5 cm/m taper):
-
-| Stems actually | Setting | DBH RMSE | Arc coverage | Still flagged |
-|---|---|---|---|---|
-| 3 % oval | off | 1.64 cm | 48 % | 100 % |
-| 3 % oval | **on** | **1.07 cm** | 66 % | 0 % |
-| 6 % oval | off | 3.37 cm | 47 % | 100 % |
-| 6 % oval | **on** | **2.55 cm** | 64 % | 12 % |
-
-- **It changes nothing when it can't help.** If the same side is hidden at every height, the stem keeps its standard fit and its `warning`, and no note is added. Stems that are already seen well are not touched. On the synthetic benchmark plots (same side hidden at every height) results are identical with the setting on.
-- **Stems it can now include.** A stem that would fail with "too few points in the band" is measured from the taller window instead of being dropped, with a note saying so.
-- **It is opt-in, because it changes measurements.** Completed trees stay identifiable: `dbh_method` is *taller window (taper)* instead of *breast-height band*, `band_half_width` gives the window used, and the `message` records the step, e.g. *"seen from one side at breast height (arc coverage 48 %); completed to 66 % using breast height ±0.74 m with a taper term"*. Once 60 % of the circumference is seen the tree is no longer a `warning`, but you can always filter on `dbh_method`.
-- **Its limits.** A taller window can pick up low branches or butt swell, which the robust fit down-weights but cannot remove completely. It does not make an interval honest for stems far more oval than `ovality_sd` assumes: at 6 % ovality the 95 % interval held about 92 % of the time with completion (83 % without) in this simulation. These are simulations of the same idealised kind as above, not field results.
-
-**What the program cannot do.** The 3 % is an assumption, not a measurement of your forest. Stems that are strongly oval, fluted or buttressed (like the 44 × 36 cm example above) will still be mis-measured from one side by more than the interval says. For such species raise `fit.ovality_sd` (the app has a *Stem non-roundness* slider), or better, scan from more sides.
-
-What to do:
-
-- **Scan from at least two sides**, so every stem is seen all round or from both flanks. Then none of this matters.
-- **Review the flagged trees.** In the table, filter by status `warning` or sort by `arc_coverage`.
-- **Calibrate with partly visible trees.** Tape-measure some of them and run [calibration](#9-calibrating-the-confidence-interval); it checks how well the intervals work on your data. If the calibration shows the intervals are too narrow, raise `ovality_sd`.
+**[The simulations behind this, the settings and the limits →](docs/partly_visible_stems.md)**
 
 ## 9. Calibrating the confidence interval
 
@@ -932,7 +864,7 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 | **Linux: "glibc … is too old"** | Use Ubuntu 22.04+ / Debian 12+, or [install from source](#from-source-for-development-or-the-latest-code) |
 | **"coordinates are longitude/latitude"** | Reproject the file to a projected CRS (e.g. UTM) with PDAL or LAStools first |
 | **"N M points need about X GB of memory, but only Y GB is available"**, or the app/run simply stops (the system killed it) | The pipeline needs about 220 bytes per point at its peak (a 2-minute vehicle segment: about 10 GB). Process fewer files at once, cut out the plot with `--crop` (LAS/LAZ are cropped while reading), or use `--tile` on the command line ([tiles](#large-clouds-tiles)); closing other programs frees memory too. `--no-memory-check` runs anyway |
-| **"N files … each have their own coordinates starting at (0, 0) and no coordinate system"** | They are separate SLAM/KISS-ICP runs (e.g. the segments of one drive), each in its own frame: loaded together they stack different places on top of each other. Run each file on its own, then `fip georeference` each and `fip merge` them ([one map of a drive](#fip-merge)). If they really share one frame, add `--same-frame` |
+| **"N files … each have their own coordinates starting at (0, 0) and no coordinate system"** | They are separate SLAM/KISS-ICP runs (e.g. the segments of one drive), each in its own frame: loaded together they stack different places on top of each other. Use the app's *Whole drive* panel or [`fip drive`](#fip-drive), which measures each segment on its own and merges them. If they really share one frame, add `--same-frame` |
 | **Tiles: "different coordinate systems / units"** | Tiles from different projects can't be merged; process them separately |
 | **Anything else** | Run `fip self-test`, and check `fip.log` or the app's **Log** tab. When reporting a problem, include the log |
 
@@ -942,10 +874,10 @@ The `plugins/` folder includes an example metric (`girth_metric.py`: stem circum
 
 ```bash
 pip install -e ".[test,app,las]" rosbags ruff
-pytest -q tests                  # 157 tests: fitting, CIs, readers, exports, plugins, end-to-end, web app
-ruff check python tests
-python scripts/evaluation/benchmark_synthetic.py   # accuracy vs known truth; exits 1 on a regression
+make check        # lint, the test suite under CI's settings, and the accuracy benchmark
 ```
+
+`make check` runs what CI and the release build run; do it before tagging a release. Its parts: `make lint` (ruff on this project's modules), `LOG_LEVEL=warn pytest -q tests` (fitting, intervals, readers, exports, plugins, real-data fixtures, end-to-end, web app), and `python scripts/evaluation/benchmark_synthetic.py` (accuracy against known truth; exits 1 on a regression).
 
 | Folder | Contents |
 |---|---|

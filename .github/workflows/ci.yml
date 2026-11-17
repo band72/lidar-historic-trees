@@ -46,17 +46,7 @@ jobs:
 
       - name: Lint new modules
         if: runner.os == 'Linux'
-        run: >
-          ruff check
-          python/forest_inventory_pipeline/app
-          python/forest_inventory_pipeline/plugins
-          python/forest_inventory_pipeline/inventory.py
-          python/forest_inventory_pipeline/records.py
-          python/forest_inventory_pipeline/errors.py
-          python/forest_inventory_pipeline/calibration.py
-          python/forest_inventory_pipeline/synthetic.py
-          python/forest_inventory_pipeline/traits/dbh/robust_fit.py
-          tests/inventory plugins
+        run: make lint
 
       - name: Tests
         env:

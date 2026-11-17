@@ -511,6 +511,7 @@ def inventory(
             exclusions_file=str(exclusions_fp) if exclusions_fp else None,
             **({"tiles": tiles_info, "tile_size_m": tile, "tile_overlap_m": tile_overlap}
                if tiles_info is not None else {}),
+            **_resources(cloud, tiles_info),
         )
         written = inv.export_records(records, output_dir, export, ctx, options=export_opts)
         s = inv.summarize(records)
@@ -535,6 +536,23 @@ def inventory(
     except Exception:
         logger.exception("unexpected failure; full traceback in the log file")
         sys.exit(1)
+
+
+def _resources(cloud, tiles_info) -> dict:
+    """Points processed and the process's peak memory, for run.json and the log."""
+    from . import inventory as inv
+
+    n = int(len(cloud.xyz)) if cloud.xyz is not None else (
+        max((t["points"] for t in tiles_info), default=0) if tiles_info else 0)
+    peak = inv.peak_memory_bytes()
+    out = {"points": n, "peak_memory_gb": round(peak / 1e9, 2) if peak else None}
+    if peak and n:
+        out["peak_bytes_per_point"] = round(peak / n)
+        logger.info(
+            f"peak memory {peak / 1e9:.1f} GB for {n / 1e6:.1f} M points"
+            + (" (largest tile)" if tiles_info else "") + f": {peak / n:.0f} bytes per point"
+        )
+    return out
 
 
 def exc_info_str(exc: BaseException) -> str:
@@ -707,6 +725,49 @@ def georeference(
         for w in written + ([out / "georef.json"] if not alignment_fp else []):
             logger.info(f"wrote {w}")
     except (FIPError, typer.BadParameter) as exc:
+        logger.error(str(exc))
+        sys.exit(2)
+    except Exception:
+        logger.exception("unexpected failure; full traceback in the log file")
+        sys.exit(1)
+
+
+@cli.command()
+def drive(
+    source: Annotated[Path, typer.Argument(exists=True, file_okay=False, help="Folder with the drive's segments: each point cloud (e.g. segment_0-120s.laz) with its <name>_trajectory.csv next to it, as written by scripts/register_rosbag_kiss_icp.py.")],
+    gnss: Annotated[Path, typer.Option("--gnss", "-g", exists=True, help="GNSS fixes of the drive: CSV (time_s, lat, lon[, alt, h_sd]), a ROS bag or a ROS2 bag folder with NavSatFix messages.")],
+    output_dir: Annotated[Path, typer.Option("--output", "-o", file_okay=False, help="Output folder: one subfolder per segment, and merged/ with the map of the whole drive.")] = Path("drive_output"),
+    config_fp: Annotated[Optional[Path], typer.Option("--config", "-c", exists=True, dir_okay=False, help="Settings file for every segment (as for fip inventory).")] = None,
+    profile: Annotated[Optional[str], typer.Option("--profile", "-p", help="Site profile for every segment.")] = None,
+    scanner: Annotated[Optional[str], typer.Option("--scanner", help="Scanner profile for every segment.")] = None,
+    output_units: Annotated[Optional[str], typer.Option(help="Length unit of the per-segment exports: m, ft or us_ft.")] = None,
+    gnss_topic: Annotated[Optional[list[str]], typer.Option("--gnss-topic", help="NavSatFix topic(s) to use from a bag. Repeatable.")] = None,
+    distance: Annotated[float, typer.Option(help="Merge distance (m), as for fip merge.")] = 1.5,
+    log_level: Annotated[str, typer.Option(help="Console log level: trace, debug, info, warn.")] = "info",
+):
+    """
+    A whole drive in one go: measure every segment on its own (fip inventory), give its
+    trees latitude/longitude (fip georeference), and merge all segments into one map
+    (fip merge). Segments are separate SLAM runs and must never be loaded as one cloud.
+    """
+    import sys
+    from . import drive as drv
+    from .errors import FIPError
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.configure(level=log_level, log_file=output_dir / "drive.log")
+    try:
+        res = drv.run_drive(
+            source, gnss, output_dir, gnss_topics=gnss_topic, merge_distance=distance,
+            config_fp=config_fp, profile=profile, scanner=scanner, output_units=output_units,
+            log_level=log_level,
+        )
+        for s in res["segments"]:
+            logger.info(
+                f"{s['name']}: " + (f"skipped ({s['error']})" if s["error"] else
+                                    f"{s['trees']} trees, GNSS fit {s['gnss_rms_m']} m, {s['seconds']:.0f} s")
+            )
+    except FIPError as exc:
         logger.error(str(exc))
         sys.exit(2)
     except Exception:
