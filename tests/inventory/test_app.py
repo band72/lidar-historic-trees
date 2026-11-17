@@ -312,3 +312,20 @@ def test_whole_drive_panel_makes_one_map(app, tmp_path):
     assert any("one map" in s.value for s in app.success)
     assert any(b.label.startswith("Download trees_merged.gpx") for b in app.get("download_button"))
     assert (d / "drive_output" / "merged" / "trees_merged_wgs84.csv").exists()
+
+
+def test_full_self_test_including_the_web_app(tmp_path):
+    """The release build runs `fip self-test` (with the app) on the frozen program; v0.1.12
+    failed there because the self-test clicked the first button on the page, which a new
+    panel had moved. Run the same check here so it fails before a release, not during it."""
+    import os
+    import subprocess
+    import sys
+
+    res = subprocess.run(
+        [sys.executable, "-m", "forest_inventory_pipeline.fip", "self-test"],
+        capture_output=True, text=True, timeout=600,
+        env={**os.environ, "COLUMNS": "200", "LOG_LEVEL": "info", "FIP_HOME": str(tmp_path)},
+    )
+    assert res.returncode == 0, (res.stdout + res.stderr)[-2500:]
+    assert "self-test passed" in res.stdout + res.stderr

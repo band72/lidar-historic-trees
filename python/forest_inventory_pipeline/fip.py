@@ -986,7 +986,8 @@ def self_test(
                 at = AppTest.from_file(str(APP_SCRIPT), default_timeout=300)
                 at.run()
                 at.sidebar.number_input[0].set_value(8)
-                at.button[0].click().run()
+                # by label: other panels put their own buttons first (v0.1.12 broke on this)
+                next(b for b in at.sidebar.button if b.label == "Run tree extraction").click().run()
             finally:
                 if old is None:
                     os.environ.pop("FIP_HOME", None)
