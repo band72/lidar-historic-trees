@@ -243,3 +243,38 @@ def test_save_current_settings_as_a_profile(app, tmp_path):
     from forest_inventory_pipeline import profiles
 
     assert profiles.get("Old pines").fit == {"max_tilt_deg": 27.5}
+
+
+def test_rejection_summary_in_the_app(app, tmp_path, monkeypatch):
+    import numpy as np
+
+    from forest_inventory_pipeline.synthetic import make_plot
+
+    monkeypatch.setenv("FIP_HOME", str(tmp_path / "home"))
+    plot = make_plot(n_trees=6, seed=6)
+    rng = np.random.default_rng(0)
+    gx, gy = plot.points[:, 0].min() + 3.0, plot.points[:, 1].min() + 3.0
+    gz = float(np.percentile(plot.points[:, 2], 5))
+    _write_las(tmp_path / "plot.laz", np.vstack([plot.points, rng.normal(0, 0.35, (6000, 3)) + [gx, gy, gz + 1.7]]))
+    app.sidebar.radio[0].set_value("path").run()
+    app.text_input(key="input_typed").set_value(str(tmp_path / "plot.laz")).run()
+    next(b for b in app.sidebar.button if b.label == "Run tree extraction").click().run()
+    assert not app.exception
+    exp = next(e for e in app.expander if e.label.startswith("Why"))
+    assert "rejected" in exp.label
+    cols = [list(t.value.columns) for t in app.dataframe]
+    assert ["Reason", "Objects", "Setting to try"] in cols
+
+
+def test_changed_settings_table_and_keyed_controls(app):
+    tilt = next(s for s in app.sidebar.slider if s.label.startswith("Max stem tilt"))
+    tilt.set_value(30.0).run()
+    cov = next(s for s in app.sidebar.slider if s.label == "Min arc coverage")
+    cov.set_value(0.5).run()
+    exp = next(e for e in app.sidebar.expander if e.label.startswith("Changed from the profile"))
+    text = " ".join(m.value for m in exp.markdown)
+    assert "| max tilt (°) | 22.5 | 30 |" in text
+    assert "| min arc coverage | 0.6 | 0.5 |" in text
+    next(b for b in app.sidebar.button if b.label == "↺ Reset").click().run()
+    assert next(s for s in app.sidebar.slider if s.label == "Min arc coverage").value == 0.6
+    assert next(s for s in app.sidebar.slider if s.label.startswith("Ground class threshold")).value == 0.5

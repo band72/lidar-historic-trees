@@ -513,6 +513,13 @@ def inventory(
             + (f", {s['added']} added by reviewer" if s["added"] else "") + "; "
             f"mean DBH {s['mean_dbh'] * 100:.1f} cm; basal area {s['basal_area_m2']:.2f} m^2"
         )
+        why = inv.rejection_summary(records)
+        if why:
+            logger.info(
+                f"rejected {s['failed']} objects; why: "
+                + ", ".join(f"{w['reason']} {w['count']}" for w in why)
+                + " (an object can have several reasons; see trees.csv 'message')"
+            )
         for w in written:
             logger.info(f"wrote {w}")
     except (FIPError, typer.BadParameter) as exc:

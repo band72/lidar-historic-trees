@@ -371,6 +371,12 @@ def sidebar_units(cloud_units: str) -> DisplayUnits:
 PROFILE_WIDGETS: dict[str, tuple[str, str, Callable]] = {
     "g_cloth": ("ground", "cloth_resolution", float),
     "g_rigid": ("ground", "rigidness", int),
+    "g_thresh": ("ground", "class_threshold", float),
+    "g_refine": ("ground", "refine_tolerance", lambda v: 0.15 if v is None else float(v)),
+    "g_source": ("ground", "source", str),
+    "f_cov": ("fit", "min_arc_coverage", float),
+    "f_relw": ("fit", "max_relative_ci_width", lambda v: int(round(v * 100))),
+    "f_inl": ("fit", "min_inlier_ratio", float),
     "s_k": ("segment", "k", int),
     "s_beta": ("segment", "beta", float),
     "s_voxel": ("segment", "voxel_size", float),
@@ -409,7 +415,23 @@ SETTING_LABELS = {
     "min_stem_dominance": "share of points on the trunk", "max_interior_fraction": "max filled inside",
     "stem_check_top": "trunk checked up to (m)", "pole_action": "bare column (pole?)",
     "short_action": "short object, large DBH (shrub?)",
+    "class_threshold": "ground class threshold (m)", "refine_tolerance": "ground refinement tolerance (m)",
+    "source": "ground source", "min_arc_coverage": "min arc coverage",
+    "max_relative_ci_width": "max CI width (% of DBH)", "min_inlier_ratio": "min inlier ratio",
+    "min_z": "height slice (m)",
 }
+#: the sidebar's units for the few widgets that do not show metres
+WIDGET_UNIT_NOTE = {"f_tol": "cm", "f_kernel": "cm", "f_rmax": "DBH cm", "f_ovality": "%", "f_gap": "cm"}
+
+
+def widget_label(key: str, units: DisplayUnits) -> str:
+    if key == "s_zr":
+        return "height slice (m)"
+    if key == "f_min_dbh":
+        return f"minimum DBH ({units.dl})"
+    _, param, _ = PROFILE_WIDGETS[key]
+    label = SETTING_LABELS.get(param, param)
+    return label.replace("(m)", f"({WIDGET_UNIT_NOTE[key]})") if key in WIDGET_UNIT_NOTE else label
 
 
 def profile_sections(name: str, scanner: str) -> dict[str, dict]:
@@ -445,6 +467,14 @@ def _apply_profile() -> None:
     values, extra = profile_widget_values(name, U, scanner)
     st.session_state.update(values)
     st.session_state["profile_extra"] = extra
+
+
+def _fmt_setting(v) -> str:
+    if isinstance(v, bool):
+        return "on" if v else "off"
+    if isinstance(v, (tuple, list)):
+        return "–".join(_fmt_setting(x) for x in v)
+    return f"{v:g}" if isinstance(v, (int, float)) else str(v)
 
 
 def _evidence_line(p) -> str:
@@ -500,6 +530,13 @@ def sidebar_profile(units: DisplayUnits) -> None:
         c1.caption(f"✎ {len(changed)} setting(s) changed from this profile.")
         c2.button("↺ Reset", key="profile_reset", on_click=_apply_profile,
                   help="Put every slider back to the chosen profiles' values.")
+        with st.sidebar.expander(f"Changed from the profile ({len(changed)})"):
+            st.markdown(
+                "| Setting | Profile | Now |\n|---|---|---|\n" + "\n".join(
+                    f"| {widget_label(k, units)} | {_fmt_setting(values[k])} | "
+                    f"{_fmt_setting(st.session_state.get(k))} |" for k in changed
+                )
+            )
 
 
 def sidebar_segmentation():
@@ -515,13 +552,13 @@ def sidebar_segmentation():
                 key="g_cloth",
                 help="Coarser cloth bridges gaps; finer follows micro-relief.",
             )
-            thresh = st.slider("Ground class threshold (m)", 0.05, 1.5, 0.5, 0.05)
+            thresh = st.slider("Ground class threshold (m)", 0.05, 1.5, step=0.05, key="g_thresh")
             refine = st.slider(
                 "Ground refinement tolerance (m)",
                 0.05,
                 1.0,
-                0.15,
-                0.01,
+                step=0.01,
+                key="g_refine",
                 help="Points this far above the local terrain are not ground (removes stem bases from the terrain model).",
             )
             rigid = st.select_slider(
@@ -530,6 +567,7 @@ def sidebar_segmentation():
             gsource = st.selectbox(
                 "Ground source",
                 ["auto", "csf", "classification"],
+                key="g_source",
                 format_func=lambda v: {
                     "auto": "auto (file's ground class if present, else CSF)",
                     "csf": "always run CSF",
@@ -662,8 +700,8 @@ def sidebar_fit() -> FitParams | None:
             "Min arc coverage",
             0.0,
             1.0,
-            0.6,
-            0.05,
+            step=0.05,
+            key="f_cov",
             help="Stems scanned from fewer sides than this are flagged as warnings "
             "(half of the circumference = 0.5).",
         )
@@ -678,8 +716,8 @@ def sidebar_fit() -> FitParams | None:
             "amount, more the less of the circumference was scanned. Raise it for fluted or "
             "buttressed species.",
         )
-        relw = st.slider("Max CI width (% of DBH)", 1, 100, 25, 1)
-        inl = st.slider("Min inlier ratio", 0.0, 1.0, 0.3, 0.05)
+        relw = st.slider("Max CI width (% of DBH)", 1, 100, step=1, key="f_relw")
+        inl = st.slider("Min inlier ratio", 0.0, 1.0, step=0.05, key="f_inl")
     with s.expander("Trunk check"):
         trunk_check = st.toggle(
             "Reject clusters that are not trunks",
@@ -819,6 +857,26 @@ def sidebar_fit() -> FitParams | None:
 
 
 # --------------------------------------------------------------------------- views
+
+
+def rejection_panel(records) -> None:
+    """Why objects were rejected, by reason, with the setting to try."""
+    why = inv.rejection_summary(records)
+    if not why:
+        return
+    n = sum(r.status == STATUS_FAILED for r in records)
+    with st.expander(f"Why {n} objects were rejected", expanded=False):
+        st.caption(
+            "Counts by reason, most common first. An object can be rejected for several "
+            "reasons. Most rejected objects are not trees (shrubs, posts, walls, scatter): look "
+            "at a few in *Tree detail* before loosening a setting."
+        )
+        st.dataframe(
+            pd.DataFrame([{"Reason": w["reason"], "Objects": w["count"],
+                           "Setting to try": w["setting"]} for w in why]),
+            hide_index=True,
+            width="stretch",
+        )
 
 
 def records_frame(records) -> pd.DataFrame:
@@ -1804,6 +1862,7 @@ def main():
         st.warning("No trees to show.")
         return
     summary_row(df, seg["extent"], seg.get("truth"))
+    rejection_panel(records)
 
     save_panel(records, fp, seg)
     tab_map, tab_tree, tab_table, tab_cal, tab_set, tab_log = st.tabs(
